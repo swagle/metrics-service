@@ -1,1 +1,1 @@
-rsync -rtv ~/Documents/workspace/hadoop-common/hadoop-yarn-project/hadoop-yarn .
+rsync -rtv --exclude 'target' ~/Documents/workspace/hadoop-common/hadoop-yarn-project/hadoop-yarn .
