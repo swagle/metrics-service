@@ -19,25 +19,61 @@ limitations under the License.
 '''
 
 import logging
-import threading
-import psutil
-import os
+from time import time
+from host_info import HostInfo
+from event_definition import HostMetricCollectEvent, ProcessMetricCollectEvent
 
 logger = logging.getLogger()
 
-class MetricsCollector(threading.Thread):
+DEFAULT_HOST_APP_ID = '_HOST'
+
+class MetricsCollector():
   """
   The main Reader thread that dequeues events from the event queue and
-  submits a metric record to the emit buffer.
+  submits a metric record to the emit buffer. Implementation of dequeue is
+  not required if Timer class is used for metric groups.
   """
 
+  def __init__(self, emit_queue, application_metric_map):
+    self.emit_queue = emit_queue
+    self.application_metric_map = application_metric_map
+    self.host_info = HostInfo()
+  pass
 
-  def get_host_stats(self):
-    """
-    Return relatively unchanging information about the system
-    """
+  def process_event(self, event):
+    if event._classname = HostMetricCollectEvent.__name__:
+      self.process_host_collection_event()
+    elif event._classname = ProcessMetricCollectEvent.__name__:
+      self.process_process_collection_event(event)
+    else:
+      logger.warn('Unknown event in queue')
     pass
 
+  def process_host_collection_event(self, event):
+    startTime = int(round(time() * 1000))
+    metrics = None
 
+    if 'cpu' in event.get_group_name():
+      metrics = self.host_info.get_cpu_times()
 
-  pass
+    elif 'disk' in event.get_group_name():
+      metrics = self.host_info.get_combined_disk_usage()
+
+    elif 'network' in event.get_group_name():
+      metrics = self.host_info.get_network_info()
+
+    elif 'mem' in event.get_group_name():
+      metrics = self.host_info.get_mem_info()
+
+    else:
+      logger.warn('Unknown metric group.')
+    pass
+
+    if metrics:
+      for metric_name, value in metrics:
+        self.application_metric_map.put_metric(DEFAULT_HOST_APP_ID, metric_name, startTime, value)
+      pass
+    pass
+
+  def process_process_collection_event(self, event):
+    pass

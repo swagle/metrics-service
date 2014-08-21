@@ -20,10 +20,14 @@ limitations under the License.
 
 import ConfigParser
 import StringIO
+import json
+import os
 
 config = ConfigParser.RawConfigParser()
 CONFIG_FILE_PATH = "/etc/ambari-agent/conf/metric_monitor.ini"
-content = """
+METRIC_FILE_PATH = "/etc/metric-monitor/conf/metric_groups.conf"
+
+config_content = """
 [default]
 debug_level = INFO
 metrics_server = host:port
@@ -35,32 +39,85 @@ send_interval = 60
 
 [collector]
 collector_sleep_interval = 5
-
+max_queue_size = 5000
 """
 
+metric_group_info = """
+{
+   "host_metric_groups": {
+      "cpu_info": {
+         "collect_every": "15",
+         "metrics": [
+            {
+               "name": "cpu_user",
+               "value_threshold": "1.0"
+            }
+         ]
+      },
+      "disk_info": {
+         "collect_every": "30",
+         "metrics": [
+            {
+               "name": "disk_free",
+               "value_threshold": "5.0"
+            }
+         ]
+      },
+      "network_info": {
+         "collect_every": "20",
+         "metrics": [
+            {
+               "name": "bytes_out",
+               "value_threshold": "128"
+            }
+         ]
+      }
+   },
+   "process_metric_groups": {
+      "": {
+         "collect_every": "15",
+         "metrics": []
+      }
+   }
+}
+"""
 
 class Configuration:
 
   def __init__(self):
-    global content
+    global config_content
     self.config = ConfigParser.RawConfigParser()
-    self.config.readfp(StringIO.StringIO(content))
+    self.config.readfp(StringIO.StringIO(config_content))
+    if os.path.exists(METRIC_FILE_PATH):
+      self.metric_groups = json.load(open(METRIC_FILE_PATH))
+    else:
+      print 'No metric configs found at %s' % METRIC_FILE_PATH
+    pass
 
   def getConfig(self):
     return self.config
 
+  def getMetricGroupConfig(self):
+    return self.metric_groups
+
   def get(self, section, key, default=None):
-    value = self.config.get(section, key)
-    return value if value else default
+    try:
+      value = self.config.get(section, key)
+    except:
+      return default
+    return value
 
   def get_send_interval(self):
-    return self.get("emitter", "send_interval", 60)
+    return int(self.get("emitter", "send_interval", 60))
 
   def get_collector_sleep_interval(self):
-    return self.get("collector", "collector_sleep_interval", 5)
+    return int(self.get("collector", "collector_sleep_interval", 5))
 
   def get_server_address(self):
     return self.get("default", "metrics_server")
 
   def get_log_level(self):
     return self.get("default", "debug_level", "INFO")
+
+  def get_max_queue_size(self):
+    return int(self.get("collector", "max_queue_size", 5000))

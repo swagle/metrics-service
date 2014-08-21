@@ -42,7 +42,6 @@ class ApplicationMetricMap:
     self.config = config
   pass
 
-
   def put_metric(self, application_id, metric_id, timestamp, value):
     metric_map = self.app_metric_map.get(application_id)
     if not metric_map:

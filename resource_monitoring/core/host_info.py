@@ -22,13 +22,14 @@ import logging
 import psutil
 import os
 from collections import namedtuple
+import platform
 
 logger = logging.getLogger()
 
 def bytes2human(n):
   bytes = float(n)
   gigabytes = bytes / 1073741824
-  return '%.2fG' % gigabytes
+  return '%.2f' % gigabytes
 pass
 
 
@@ -128,6 +129,27 @@ class HostInfo():
                       bytes2human(combined_disk_percent),
                       max_percent_usage)
   pass
+
+  def get_host_static_info(self):
+
+    boot_time = psutil.boot_time()
+    cpu_count_logical = psutil.cpu_count()
+    swap_stats = psutil.swap_memory()
+    mem_info = psutil.virtual_memory()
+
+    return {
+      'cpu_num' : cpu_count_logical,
+      'cpu_speed' : '',
+      'swap_total' : swap_stats.total,
+      'boottime' : boot_time,
+      'machine_type' : platform.processor(),
+      'os_name' : platform.system(),
+      'os_release' : platform.release(),
+      'location' : '',
+      'mem_total' : mem_info.total
+    }
+
+
 
   def get_disk_usage(self):
     disk_usage = {}
