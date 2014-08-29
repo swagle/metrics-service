@@ -48,17 +48,17 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 
+import junit.framework.Assert;
+
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.yarn.api.records.ApplicationId;
-import org.apache.hadoop.yarn.api.records.ContainerExitStatus;
 import org.apache.hadoop.yarn.api.records.ContainerId;
 import org.apache.hadoop.yarn.api.records.ContainerLaunchContext;
 import org.apache.hadoop.yarn.api.records.ContainerStatus;
 import org.apache.hadoop.yarn.api.records.LocalResource;
 import org.apache.hadoop.yarn.api.records.LocalResourceType;
 import org.apache.hadoop.yarn.api.records.LocalResourceVisibility;
-import org.apache.hadoop.yarn.api.records.Priority;
 import org.apache.hadoop.yarn.api.records.Resource;
 import org.apache.hadoop.yarn.api.records.Token;
 import org.apache.hadoop.yarn.api.records.URL;
@@ -88,9 +88,7 @@ import org.apache.hadoop.yarn.server.nodemanager.containermanager.loghandler.eve
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.monitor.ContainersMonitorEvent;
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.monitor.ContainersMonitorEventType;
 import org.apache.hadoop.yarn.server.nodemanager.metrics.NodeManagerMetrics;
-import org.apache.hadoop.yarn.server.nodemanager.recovery.NMNullStateStoreService;
 import org.apache.hadoop.yarn.server.utils.BuilderUtils;
-import org.junit.Assert;
 import org.junit.Test;
 import org.mockito.ArgumentMatcher;
 
@@ -306,45 +304,6 @@ public class TestContainer {
       wc.containerKilledOnRequest();
       
       verifyCleanupCall(wc);
-    } finally {
-      if (wc != null) {
-        wc.finished();
-      }
-    }
-  }
-
-  @Test
-  public void testKillOnNew() throws Exception {
-    WrappedContainer wc = null;
-    try {
-      wc = new WrappedContainer(13, 314159265358979L, 4344, "yak");
-      assertEquals(ContainerState.NEW, wc.c.getContainerState());
-      wc.killContainer();
-      assertEquals(ContainerState.DONE, wc.c.getContainerState());
-      assertEquals(ContainerExitStatus.KILLED_BY_RESOURCEMANAGER,
-          wc.c.cloneAndGetContainerStatus().getExitStatus());
-      assertTrue(wc.c.cloneAndGetContainerStatus().getDiagnostics()
-          .contains("KillRequest"));
-    } finally {
-      if (wc != null) {
-        wc.finished();
-      }
-    }
-  }
-
-  @Test
-  public void testKillOnLocalizing() throws Exception {
-    WrappedContainer wc = null;
-    try {
-      wc = new WrappedContainer(14, 314159265358979L, 4344, "yak");
-      wc.initContainer();
-      assertEquals(ContainerState.LOCALIZING, wc.c.getContainerState());
-      wc.killContainer();
-      assertEquals(ContainerState.KILLING, wc.c.getContainerState());
-      assertEquals(ContainerExitStatus.KILLED_BY_RESOURCEMANAGER,
-          wc.c.cloneAndGetContainerStatus().getExitStatus());
-      assertTrue(wc.c.cloneAndGetContainerStatus().getDiagnostics()
-          .contains("KillRequest"));
     } finally {
       if (wc != null) {
         wc.finished();
@@ -723,8 +682,6 @@ public class TestContainer {
       Context context = mock(Context.class);
       when(context.getApplications()).thenReturn(
           new ConcurrentHashMap<ApplicationId, Application>());
-      NMNullStateStoreService stateStore = new NMNullStateStoreService();
-      when(context.getNMStateStore()).thenReturn(stateStore);
       ContainerExecutor executor = mock(ContainerExecutor.class);
       launcher =
           new ContainersLauncher(context, dispatcher, executor, null, null);
@@ -753,7 +710,7 @@ public class TestContainer {
       long currentTime = System.currentTimeMillis();
       ContainerTokenIdentifier identifier =
           new ContainerTokenIdentifier(cId, "127.0.0.1", user, resource,
-            currentTime + 10000L, 123, currentTime, Priority.newInstance(0), 0);
+            currentTime + 10000L, 123, currentTime);
       Token token =
           BuilderUtils.newContainerToken(BuilderUtils.newNodeId(host, port),
             "password".getBytes(), identifier);
@@ -902,14 +859,12 @@ public class TestContainer {
     }
 
     public void killContainer() {
-      c.handle(new ContainerKillEvent(cId,
-          ContainerExitStatus.KILLED_BY_RESOURCEMANAGER,
-          "KillRequest"));
+      c.handle(new ContainerKillEvent(cId, "KillRequest"));
       drainDispatcherEvents();
     }
 
     public void containerKilledOnRequest() {
-      int exitCode = ContainerExitStatus.KILLED_BY_RESOURCEMANAGER;
+      int exitCode = ExitCode.FORCE_KILLED.getExitCode();
       String diagnosticMsg = "Container completed with exit code " + exitCode;
       c.handle(new ContainerExitEvent(cId,
           ContainerEventType.CONTAINER_KILLED_ON_REQUEST, exitCode,

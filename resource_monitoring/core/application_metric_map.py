@@ -20,6 +20,7 @@ limitations under the License.
 
 import logging
 import json
+from threading import RLock
 
 logger = logging.getLogger()
 
@@ -36,11 +37,17 @@ class ApplicationMetricMap:
 
   app_metric_map = {}
 
-  def __init__(self, hostname, ip_address, config):
+  def __init__(self, hostname, ip_address):
     self.hostname = hostname
     self.ip_address = ip_address
-    self.config = config
+    self.lock = RLock()
   pass
+
+  def acquire_lock(self):
+    self.lock.acquire()
+
+  def release_lock(self):
+    self.lock.release()
 
   def put_metric(self, application_id, metric_id, timestamp, value):
     metric_map = self.app_metric_map.get(application_id)
@@ -77,8 +84,7 @@ class ApplicationMetricMap:
       if self.app_metric_map.has_key(application_id):
         local_metric_map = { application_id : self.app_metric_map[application_id] }
       else:
-        logger.info("application_id: %s, not present in the map." %
-                    application_id)
+        logger.info("application_id: {0}, not present in the map.".format(application_id))
     else:
       local_metric_map = self.app_metric_map.copy()
     pass

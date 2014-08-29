@@ -34,7 +34,6 @@ import org.apache.hadoop.security.token.TokenIdentifier;
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
 import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.api.records.ContainerId;
-import org.apache.hadoop.yarn.api.records.Priority;
 import org.apache.hadoop.yarn.api.records.Resource;
 
 /**
@@ -57,12 +56,10 @@ public class ContainerTokenIdentifier extends TokenIdentifier {
   private long expiryTimeStamp;
   private int masterKeyId;
   private long rmIdentifier;
-  private Priority priority;
-  private long creationTime;
 
-  public ContainerTokenIdentifier(ContainerId containerID,
-      String hostName, String appSubmitter, Resource r, long expiryTimeStamp,
-      int masterKeyId, long rmIdentifier, Priority priority, long creationTime) {
+  public ContainerTokenIdentifier(ContainerId containerID, String hostName,
+      String appSubmitter, Resource r, long expiryTimeStamp, int masterKeyId,
+      long rmIdentifier) {
     this.containerId = containerID;
     this.nmHostAddr = hostName;
     this.appSubmitter = appSubmitter;
@@ -70,8 +67,6 @@ public class ContainerTokenIdentifier extends TokenIdentifier {
     this.expiryTimeStamp = expiryTimeStamp;
     this.masterKeyId = masterKeyId;
     this.rmIdentifier = rmIdentifier;
-    this.priority = priority;
-    this.creationTime = creationTime;
   }
 
   /**
@@ -104,13 +99,6 @@ public class ContainerTokenIdentifier extends TokenIdentifier {
     return this.masterKeyId;
   }
 
-  public Priority getPriority() {
-    return this.priority;
-  }
-
-  public long getCreationTime() {
-    return this.creationTime;
-  }
   /**
    * Get the RMIdentifier of RM in which containers are allocated
    * @return RMIdentifier
@@ -136,8 +124,6 @@ public class ContainerTokenIdentifier extends TokenIdentifier {
     out.writeLong(this.expiryTimeStamp);
     out.writeInt(this.masterKeyId);
     out.writeLong(this.rmIdentifier);
-    out.writeInt(this.priority.getPriority());
-    out.writeLong(this.creationTime);
   }
 
   @Override
@@ -156,8 +142,6 @@ public class ContainerTokenIdentifier extends TokenIdentifier {
     this.expiryTimeStamp = in.readLong();
     this.masterKeyId = in.readInt();
     this.rmIdentifier = in.readLong();
-    this.priority = Priority.newInstance(in.readInt());
-    this.creationTime = in.readLong();
   }
 
   @Override

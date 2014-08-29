@@ -111,16 +111,16 @@ int check_executor_permissions(char *executable_file) {
     return -1;
   }
 
-  // check others do not have write/execute permissions
-  if ((filestat.st_mode & S_IWOTH) == S_IWOTH ||
-      (filestat.st_mode & S_IXOTH) == S_IXOTH) {
+  // check others do not have read/write/execute permissions
+  if ((filestat.st_mode & S_IROTH) == S_IROTH || (filestat.st_mode & S_IWOTH)
+      == S_IWOTH || (filestat.st_mode & S_IXOTH) == S_IXOTH) {
     fprintf(LOGFILE,
-            "The container-executor binary should not have write or execute "
-            "for others.\n");
+            "The container-executor binary should not have read or write or"
+            " execute for others.\n");
     return -1;
   }
 
-  // Binary should be setuid executable
+  // Binary should be setuid/setgid executable
   if ((filestat.st_mode & S_ISUID) == 0) {
     fprintf(LOGFILE, "The container-executor binary should be set setuid.\n");
     return -1;
@@ -1082,7 +1082,6 @@ static int delete_path(const char *full_path,
     FTS* tree = fts_open(paths, FTS_PHYSICAL | FTS_XDEV, NULL);
     FTSENT* entry = NULL;
     int ret = 0;
-    int ret_errno = 0;
 
     if (tree == NULL) {
       fprintf(LOGFILE,
@@ -1100,13 +1099,7 @@ static int delete_path(const char *full_path,
           if (rmdir(entry->fts_accpath) != 0) {
             fprintf(LOGFILE, "Couldn't delete directory %s - %s\n", 
                     entry->fts_path, strerror(errno));
-            if (errno == EROFS) {
-              exit_code = -1;
-            }
-            // record the first errno
-            if (errno != ENOENT && ret_errno == 0) {
-              ret_errno = errno;
-            }
+            exit_code = -1;
           }
         }
         break;
@@ -1118,13 +1111,7 @@ static int delete_path(const char *full_path,
         if (unlink(entry->fts_accpath) != 0) {
           fprintf(LOGFILE, "Couldn't delete file %s - %s\n", entry->fts_path,
                   strerror(errno));
-          if (errno == EROFS) {
-            exit_code = -1;
-          }
-          // record the first errno
-          if (errno != ENOENT && ret_errno == 0) {
-            ret_errno = errno;
-          }
+          exit_code = -1;
         }
         break;
 
@@ -1167,9 +1154,6 @@ static int delete_path(const char *full_path,
       }
     }
     ret = fts_close(tree);
-    if (ret_errno != 0) {
-      exit_code = -1;
-    }
     if (exit_code == 0 && ret != 0) {
       fprintf(LOGFILE, "Error in fts_close while deleting %s\n", full_path);
       exit_code = -1;

@@ -18,27 +18,17 @@
 
 package org.apache.hadoop.yarn.server.resourcemanager.rmnode;
 
-import java.util.List;
-
-import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.api.records.NodeId;
 
 public class RMNodeReconnectEvent extends RMNodeEvent {
   private RMNode reconnectedNode;
-  private List<ApplicationId> runningApplications;
 
-  public RMNodeReconnectEvent(NodeId nodeId, RMNode newNode,
-      List<ApplicationId> runningApps) {
+  public RMNodeReconnectEvent(NodeId nodeId, RMNode newNode) {
     super(nodeId, RMNodeEventType.RECONNECTED);
     reconnectedNode = newNode;
-    runningApplications = runningApps;
   }
 
   public RMNode getReconnectedNode() {
     return reconnectedNode;
-  }
-
-  public List<ApplicationId> getRunningApplications() {
-    return runningApplications;
   }
 }

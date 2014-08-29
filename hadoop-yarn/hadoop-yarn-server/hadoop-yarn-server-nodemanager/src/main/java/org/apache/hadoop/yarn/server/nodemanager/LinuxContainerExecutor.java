@@ -18,7 +18,6 @@
 
 package org.apache.hadoop.yarn.server.nodemanager;
 
-import com.google.common.base.Optional;
 import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -68,12 +67,11 @@ public class LinuxContainerExecutor extends ContainerExecutor {
             conf.getClass(YarnConfiguration.NM_LINUX_CONTAINER_RESOURCES_HANDLER,
               DefaultLCEResourcesHandler.class, LCEResourcesHandler.class), conf);
     resourcesHandler.setConf(conf);
-
     if (conf.get(YarnConfiguration.NM_CONTAINER_EXECUTOR_SCHED_PRIORITY) != null) {
-      containerSchedPriorityIsSet = true;
-      containerSchedPriorityAdjustment = conf
-          .getInt(YarnConfiguration.NM_CONTAINER_EXECUTOR_SCHED_PRIORITY, 
-          YarnConfiguration.DEFAULT_NM_CONTAINER_EXECUTOR_SCHED_PRIORITY);
+     containerSchedPriorityIsSet = true;
+     containerSchedPriorityAdjustment = conf
+         .getInt(YarnConfiguration.NM_CONTAINER_EXECUTOR_SCHED_PRIORITY, 
+         YarnConfiguration.DEFAULT_NM_CONTAINER_EXECUTOR_SCHED_PRIORITY);
     }
     nonsecureLocalUser = conf.get(
         YarnConfiguration.NM_NONSECURE_MODE_LOCAL_USER_KEY,
@@ -94,6 +92,8 @@ public class LinuxContainerExecutor extends ContainerExecutor {
   String getRunAsUser(String user) {
     return UserGroupInformation.isSecurityEnabled() ? user : nonsecureLocalUser;
   }
+
+
 
   /**
    * List of commands that the setuid script will execute.
@@ -150,7 +150,7 @@ public class LinuxContainerExecutor extends ContainerExecutor {
     if (containerSchedPriorityIsSet) {
       command.addAll(Arrays.asList("nice", "-n",
           Integer.toString(containerSchedPriorityAdjustment)));
-    }
+    } 
   }
 
   @Override 
@@ -189,7 +189,7 @@ public class LinuxContainerExecutor extends ContainerExecutor {
     String runAsUser = getRunAsUser(user);
     List<String> command = new ArrayList<String>();
     addSchedPriorityCommand(command);
-    command.addAll(Arrays.asList(containerExecutorExe,
+    command.addAll(Arrays.asList(containerExecutorExe, 
                    runAsUser,
                    user, 
                    Integer.toString(Commands.INITIALIZE_CONTAINER.getValue()),
@@ -297,21 +297,9 @@ public class LinuxContainerExecutor extends ContainerExecutor {
           && exitCode != ExitCode.TERMINATED.getExitCode()) {
         LOG.warn("Exception from container-launch with container ID: "
             + containerId + " and exit code: " + exitCode , e);
-
-        StringBuilder builder = new StringBuilder();
-        builder.append("Exception from container-launch.\n");
-        builder.append("Container id: " + containerId + "\n");
-        builder.append("Exit code: " + exitCode + "\n");
-        if (!Optional.fromNullable(e.getMessage()).or("").isEmpty()) {
-          builder.append("Exception message: " + e.getMessage() + "\n");
-        }
-        builder.append("Stack trace: "
-            + StringUtils.stringifyException(e) + "\n");
-        if (!shExec.getOutput().isEmpty()) {
-          builder.append("Shell output: " + shExec.getOutput() + "\n");
-        }
-        String diagnostics = builder.toString();
-        logOutput(diagnostics);
+        logOutput(shExec.getOutput());
+        String diagnostics = "Exception from container-launch: \n"
+            + StringUtils.stringifyException(e) + "\n" + shExec.getOutput();
         container.handle(new ContainerDiagnosticsUpdateEvent(containerId,
             diagnostics));
       } else {

@@ -18,19 +18,16 @@
 
 package org.apache.hadoop.yarn.util.timeline;
 
-import java.io.IOException;
-import java.net.InetSocketAddress;
-
 import org.apache.hadoop.classification.InterfaceAudience.Public;
 import org.apache.hadoop.classification.InterfaceStability.Evolving;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.io.Text;
-import org.apache.hadoop.security.SecurityUtil;
-import org.apache.hadoop.yarn.conf.YarnConfiguration;
-import org.apache.hadoop.yarn.webapp.YarnJacksonJaxbJsonProvider;
 import org.codehaus.jackson.JsonGenerationException;
+import org.codehaus.jackson.map.AnnotationIntrospector;
 import org.codehaus.jackson.map.JsonMappingException;
 import org.codehaus.jackson.map.ObjectMapper;
+import org.codehaus.jackson.map.annotate.JsonSerialize.Inclusion;
+import org.codehaus.jackson.xc.JaxbAnnotationIntrospector;
+import java.io.IOException;
+import java.util.Map;
 
 /**
  * The helper class for the timeline module.
@@ -44,7 +41,10 @@ public class TimelineUtils {
 
   static {
     mapper = new ObjectMapper();
-    YarnJacksonJaxbJsonProvider.configObjectMapper(mapper);
+    AnnotationIntrospector introspector = new JaxbAnnotationIntrospector();
+    mapper.setAnnotationIntrospector(introspector);
+    mapper.getSerializationConfig()
+        .setSerializationInclusion(Inclusion.NON_NULL);
   }
 
   /**
@@ -77,32 +77,14 @@ public class TimelineUtils {
   public static String dumpTimelineRecordtoJSON(Object o, boolean pretty)
       throws JsonGenerationException, JsonMappingException, IOException {
     if (pretty) {
-      return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(o);
+      return mapper.defaultPrettyPrintingWriter().writeValueAsString(o);
     } else {
       return mapper.writeValueAsString(o);
     }
   }
 
-  public static InetSocketAddress getTimelineTokenServiceAddress(
-      Configuration conf) {
-    InetSocketAddress timelineServiceAddr = null;
-    if (YarnConfiguration.useHttps(conf)) {
-      timelineServiceAddr = conf.getSocketAddr(
-          YarnConfiguration.TIMELINE_SERVICE_WEBAPP_HTTPS_ADDRESS,
-          YarnConfiguration.DEFAULT_TIMELINE_SERVICE_WEBAPP_HTTPS_ADDRESS,
-          YarnConfiguration.DEFAULT_TIMELINE_SERVICE_WEBAPP_HTTPS_PORT);
-    } else {
-      timelineServiceAddr = conf.getSocketAddr(
-          YarnConfiguration.TIMELINE_SERVICE_WEBAPP_ADDRESS,
-          YarnConfiguration.DEFAULT_TIMELINE_SERVICE_WEBAPP_ADDRESS,
-          YarnConfiguration.DEFAULT_TIMELINE_SERVICE_WEBAPP_PORT);
-    }
-    return timelineServiceAddr;
+  public static Map readMetricFromJSON(String json) throws IOException {
+    return mapper.readValue(json, Map.class);
   }
 
-  public static Text buildTimelineTokenService(Configuration conf) {
-    InetSocketAddress timelineServiceAddr =
-        getTimelineTokenServiceAddress(conf);
-    return SecurityUtil.buildTokenService(timelineServiceAddr);
-  }
 }

@@ -18,6 +18,7 @@
 
 package org.apache.hadoop.yarn.server.resourcemanager;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -31,7 +32,7 @@ import org.apache.hadoop.yarn.api.records.ContainerStatus;
 import org.apache.hadoop.yarn.api.records.NodeId;
 import org.apache.hadoop.yarn.api.records.Resource;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
-import org.apache.hadoop.yarn.server.api.protocolrecords.NMContainerStatus;
+import org.apache.hadoop.yarn.exceptions.YarnException;
 import org.apache.hadoop.yarn.server.api.protocolrecords.NodeHeartbeatRequest;
 import org.apache.hadoop.yarn.server.api.protocolrecords.NodeHeartbeatResponse;
 import org.apache.hadoop.yarn.server.api.protocolrecords.RegisterNodeManagerRequest;
@@ -87,7 +88,7 @@ public class MockNM {
     return httpPort;
   }
   
-  public void setResourceTrackerService(ResourceTrackerService resourceTracker) {
+  void setResourceTrackerService(ResourceTrackerService resourceTracker) {
     this.resourceTracker = resourceTracker;
   }
 
@@ -100,26 +101,19 @@ public class MockNM {
   }
 
   public RegisterNodeManagerResponse registerNode() throws Exception {
-    return registerNode(null, null);
-  }
-  
-  public RegisterNodeManagerResponse registerNode(
-      List<ApplicationId> runningApplications) throws Exception {
-    return registerNode(null, runningApplications);
+    return registerNode(null);
   }
 
   public RegisterNodeManagerResponse registerNode(
-      List<NMContainerStatus> containerReports,
-      List<ApplicationId> runningApplications) throws Exception {
+      List<ContainerStatus> containerStatus) throws Exception{
     RegisterNodeManagerRequest req = Records.newRecord(
         RegisterNodeManagerRequest.class);
     req.setNodeId(nodeId);
     req.setHttpPort(httpPort);
     Resource resource = BuilderUtils.newResource(memory, vCores);
     req.setResource(resource);
-    req.setContainerStatuses(containerReports);
+    req.setContainerStatuses(containerStatus);
     req.setNMVersion(version);
-    req.setRunningApplications(runningApplications);
     RegisterNodeManagerResponse registrationResponse =
         resourceTracker.registerNodeManager(req);
     this.currentContainerTokenMasterKey =
@@ -191,11 +185,4 @@ public class MockNM {
     return heartbeatResponse;
   }
 
-  public int getMemory() {
-    return memory;
-  }
-
-  public int getvCores() {
-    return vCores;
-  }
 }

@@ -23,7 +23,8 @@ import static org.junit.Assert.assertTrue;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import org.junit.Assert;
+import junit.framework.Assert;
+
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -36,9 +37,9 @@ import org.apache.hadoop.hdfs.MiniDFSCluster;
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
 import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
-import org.apache.hadoop.yarn.server.records.impl.pb.VersionPBImpl;
-import org.apache.hadoop.yarn.server.records.Version;
-import org.apache.hadoop.yarn.server.resourcemanager.recovery.records.ApplicationStateData;
+import org.apache.hadoop.yarn.server.resourcemanager.recovery.records.RMStateVersion;
+import org.apache.hadoop.yarn.server.resourcemanager.recovery.records.impl.pb.ApplicationStateDataPBImpl;
+import org.apache.hadoop.yarn.server.resourcemanager.recovery.records.impl.pb.RMStateVersionPBImpl;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMApp;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMAppState;
 import org.apache.hadoop.yarn.util.ConverterUtils;
@@ -70,7 +71,7 @@ public class TestFSRMStateStore extends RMStateStoreTestBase {
         return new Path(new Path(workingDirPathURI, ROOT_DIR_NAME), VERSION_NODE);
       }
 
-      public Version getCurrentVersion() {
+      public RMStateVersion getCurrentVersion() {
         return CURRENT_VERSION_INFO;
       }
 
@@ -111,13 +112,13 @@ public class TestFSRMStateStore extends RMStateStoreTestBase {
     }
 
     @Override
-    public void writeVersion(Version version) throws Exception {
-      store.updateFile(store.getVersionNode(), ((VersionPBImpl) version)
+    public void writeVersion(RMStateVersion version) throws Exception {
+      store.updateFile(store.getVersionNode(), ((RMStateVersionPBImpl) version)
         .getProto().toByteArray());
     }
 
     @Override
-    public Version getCurrentVersion() throws Exception {
+    public RMStateVersion getCurrentVersion() throws Exception {
       return store.getCurrentVersion();
     }
 
@@ -157,10 +158,7 @@ public class TestFSRMStateStore extends RMStateStoreTestBase {
           .getFileSystem(conf).exists(tempAppAttemptFile));
       testRMDTSecretManagerStateStore(fsTester);
       testCheckVersion(fsTester);
-      testEpoch(fsTester);
       testAppDeletion(fsTester);
-      testDeleteStore(fsTester);
-      testAMRMTokenSecretManagerStateStore(fsTester);
     } finally {
       cluster.shutdown();
     }
@@ -215,8 +213,9 @@ public class TestFSRMStateStore extends RMStateStoreTestBase {
           try {
             store.storeApplicationStateInternal(
                 ApplicationId.newInstance(100L, 1),
-                ApplicationStateData.newInstance(111, 111, "user", null,
-                    RMAppState.ACCEPTED, "diagnostics", 333));
+                (ApplicationStateDataPBImpl) ApplicationStateDataPBImpl
+                    .newApplicationStateData(111, 111, "user", null,
+                        RMAppState.ACCEPTED, "diagnostics", 333));
           } catch (Exception e) {
             // TODO 0 datanode exception will not be retried by dfs client, fix
             // that separately.

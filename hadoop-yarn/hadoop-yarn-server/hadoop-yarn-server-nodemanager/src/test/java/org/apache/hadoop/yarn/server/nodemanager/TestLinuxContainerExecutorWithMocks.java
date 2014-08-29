@@ -18,13 +18,9 @@
 
 package org.apache.hadoop.yarn.server.nodemanager;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static junit.framework.Assert.assertEquals;
 import static org.junit.Assume.assumeTrue;
-import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 import java.io.File;
@@ -38,6 +34,8 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 
+import junit.framework.Assert;
+
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -48,13 +46,9 @@ import org.apache.hadoop.yarn.api.records.ContainerId;
 import org.apache.hadoop.yarn.api.records.ContainerLaunchContext;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.container.Container;
-import org.apache.hadoop.yarn.server.nodemanager.containermanager.container.ContainerDiagnosticsUpdateEvent;
-import org.junit.Assert;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
-import org.mockito.invocation.InvocationOnMock;
-import org.mockito.stubbing.Answer;
 
 public class TestLinuxContainerExecutorWithMocks {
 
@@ -161,8 +155,8 @@ public class TestLinuxContainerExecutorWithMocks {
     mockExec.addSchedPriorityCommand(command);
     assertEquals("first should be nice", "nice", command.get(0));
     assertEquals("second should be -n", "-n", command.get(1));
-    assertEquals("third should be the priority", Integer.toString(2), 
-                 command.get(2)); 
+    assertEquals("third should be the priority", Integer.toString(2),
+                 command.get(2));
 
     testContainerLaunch();
   }
@@ -171,11 +165,10 @@ public class TestLinuxContainerExecutorWithMocks {
   public void testLaunchCommandWithoutPriority() throws IOException {
     // make sure the command doesn't contain the nice -n since priority
     // not specified
-    List<String> command = new ArrayList<String>();
+   List<String> command = new ArrayList<String>();
     mockExec.addSchedPriorityCommand(command);
     assertEquals("addSchedPriority should be empty", 0, command.size());
   }
-
   
   @Test (timeout = 5000)
   public void testStartLocalizer() throws IOException {
@@ -222,19 +215,7 @@ public class TestLinuxContainerExecutorWithMocks {
     conf.set(YarnConfiguration.NM_LOCAL_DIRS, "file:///bin/echo");
     conf.set(YarnConfiguration.NM_LOG_DIRS, "file:///dev/null");
 
-    mockExec = spy(new LinuxContainerExecutor());
-    doAnswer(
-        new Answer() {
-          @Override
-          public Object answer(InvocationOnMock invocationOnMock)
-              throws Throwable {
-             String diagnostics = (String) invocationOnMock.getArguments()[0];
-            assertTrue("Invalid Diagnostics message: " + diagnostics,
-                diagnostics.contains("badcommand"));
-            return null;
-          }
-        }
-    ).when(mockExec).logOutput(any(String.class));
+    mockExec = new LinuxContainerExecutor();
     dirsHandler = new LocalDirsHandlerService();
     dirsHandler.init(conf);
     mockExec.setConf(conf);
@@ -251,22 +232,7 @@ public class TestLinuxContainerExecutorWithMocks {
 
     when(container.getContainerId()).thenReturn(cId);
     when(container.getLaunchContext()).thenReturn(context);
-    doAnswer(
-        new Answer() {
-          @Override
-          public Object answer(InvocationOnMock invocationOnMock)
-              throws Throwable {
-            ContainerDiagnosticsUpdateEvent event =
-                (ContainerDiagnosticsUpdateEvent) invocationOnMock
-                    .getArguments()[0];
-            assertTrue("Invalid Diagnostics message: " +
-                event.getDiagnosticsUpdate(),
-                event.getDiagnosticsUpdate().contains("badcommand"));
-            return null;
-          }
-        }
-    ).when(container).handle(any(ContainerDiagnosticsUpdateEvent.class));
-    
+
     when(cId.toString()).thenReturn(containerId);
 
     when(context.getEnvironment()).thenReturn(env);

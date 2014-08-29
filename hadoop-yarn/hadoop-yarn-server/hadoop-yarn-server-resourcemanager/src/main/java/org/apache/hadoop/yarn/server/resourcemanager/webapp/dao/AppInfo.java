@@ -30,7 +30,6 @@ import org.apache.hadoop.yarn.api.records.Resource;
 import org.apache.hadoop.yarn.api.records.YarnApplicationState;
 import org.apache.hadoop.yarn.server.resourcemanager.ResourceManager;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMApp;
-import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMAppMetrics;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttempt;
 import org.apache.hadoop.yarn.util.ConverterUtils;
 import org.apache.hadoop.yarn.util.Times;
@@ -79,12 +78,6 @@ public class AppInfo {
   protected int allocatedMB;
   protected int allocatedVCores;
   protected int runningContainers;
-  
-  // preemption info fields
-  protected int preemptedResourceMB;
-  protected int preemptedResourceVCores;
-  protected int numNonAMContainerPreempted;
-  protected int numAMContainerPreempted;
 
   public AppInfo() {
   } // JAXB needs this
@@ -154,17 +147,6 @@ public class AppInfo {
           }
         }
       }
-
-      // copy preemption info fields
-      RMAppMetrics appMetrics = app.getRMAppMetrics();
-      numAMContainerPreempted =
-          appMetrics.getNumAMContainersPreempted();
-      preemptedResourceMB =
-          appMetrics.getResourcePreempted().getMemory();
-      numNonAMContainerPreempted =
-          appMetrics.getNumNonAMContainersPreempted();
-      preemptedResourceVCores =
-          appMetrics.getResourcePreempted().getVirtualCores();
     }
   }
 
@@ -272,19 +254,4 @@ public class AppInfo {
     return this.allocatedVCores;
   }
   
-  public int getPreemptedMB() {
-    return preemptedResourceMB;
-  }
-
-  public int getPreemptedVCores() {
-    return preemptedResourceVCores;
-  }
-
-  public int getNumNonAMContainersPreempted() {
-    return numNonAMContainerPreempted;
-  }
-  
-  public int getNumAMContainersPreempted() {
-    return numAMContainerPreempted;
-  }
 }

@@ -17,7 +17,7 @@
  */
 package org.apache.hadoop.yarn.server.resourcemanager.resource;
 
-import org.junit.Assert;
+import junit.framework.Assert;
 
 import org.junit.Test;
 

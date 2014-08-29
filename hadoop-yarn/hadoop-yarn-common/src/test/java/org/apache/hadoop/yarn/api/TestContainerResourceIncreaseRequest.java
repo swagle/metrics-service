@@ -18,7 +18,7 @@
 
 package org.apache.hadoop.yarn.api;
 
-import org.junit.Assert;
+import junit.framework.Assert;
 
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
 import org.apache.hadoop.yarn.api.records.ApplicationId;

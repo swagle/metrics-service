@@ -479,20 +479,15 @@ public class ContainerLaunch implements Callable<Integer> {
         + appIdStr;
   }
 
-  @VisibleForTesting
-  static abstract class ShellScriptBuilder {
-    public static ShellScriptBuilder create() {
-      return Shell.WINDOWS ? new WindowsShellScriptBuilder() :
-        new UnixShellScriptBuilder();
-    }
+  private static abstract class ShellScriptBuilder {
 
     private static final String LINE_SEPARATOR =
         System.getProperty("line.separator");
     private final StringBuilder sb = new StringBuilder();
 
-    public abstract void command(List<String> command) throws IOException;
+    public abstract void command(List<String> command);
 
-    public abstract void env(String key, String value) throws IOException;
+    public abstract void env(String key, String value);
 
     public final void symlink(Path src, Path dst) throws IOException {
       if (!src.isAbsolute()) {
@@ -525,18 +520,10 @@ public class ContainerLaunch implements Callable<Integer> {
 
     protected abstract void link(Path src, Path dst) throws IOException;
 
-    protected abstract void mkdir(Path path) throws IOException;
+    protected abstract void mkdir(Path path);
   }
 
   private static final class UnixShellScriptBuilder extends ShellScriptBuilder {
-
-    private void errorCheck() {
-      line("hadoop_shell_errorcode=$?");
-      line("if [ $hadoop_shell_errorcode -ne 0 ]");
-      line("then");
-      line("  exit $hadoop_shell_errorcode");
-      line("fi");
-    }
 
     public UnixShellScriptBuilder(){
       line("#!/bin/bash");
@@ -546,7 +533,6 @@ public class ContainerLaunch implements Callable<Integer> {
     @Override
     public void command(List<String> command) {
       line("exec /bin/bash -c \"", StringUtils.join(" ", command), "\"");
-      errorCheck();
     }
 
     @Override
@@ -557,27 +543,16 @@ public class ContainerLaunch implements Callable<Integer> {
     @Override
     protected void link(Path src, Path dst) throws IOException {
       line("ln -sf \"", src.toUri().getPath(), "\" \"", dst.toString(), "\"");
-      errorCheck();
     }
 
     @Override
     protected void mkdir(Path path) {
       line("mkdir -p ", path.toString());
-      errorCheck();
     }
   }
 
   private static final class WindowsShellScriptBuilder
       extends ShellScriptBuilder {
-
-    private void errorCheck() {
-      line("@if %errorlevel% neq 0 exit /b %errorlevel%");
-    }
-
-    private void lineWithLenCheck(String... commands) throws IOException {
-      Shell.checkWindowsCommandLineLength(commands);
-      line(commands);
-    }
 
     public WindowsShellScriptBuilder() {
       line("@setlocal");
@@ -585,15 +560,14 @@ public class ContainerLaunch implements Callable<Integer> {
     }
 
     @Override
-    public void command(List<String> command) throws IOException {
-      lineWithLenCheck("@call ", StringUtils.join(" ", command));
-      errorCheck();
+    public void command(List<String> command) {
+      line("@call ", StringUtils.join(" ", command));
     }
 
     @Override
-    public void env(String key, String value) throws IOException {
-      lineWithLenCheck("@set ", key, "=", value);
-      errorCheck();
+    public void env(String key, String value) {
+      line("@set ", key, "=", value,
+          "\nif %errorlevel% neq 0 exit /b %errorlevel%");
     }
 
     @Override
@@ -604,20 +578,16 @@ public class ContainerLaunch implements Callable<Integer> {
       // If not on Java7+ on Windows, then copy file instead of symlinking.
       // See also FileUtil#symLink for full explanation.
       if (!Shell.isJava7OrAbove() && srcFile.isFile()) {
-        lineWithLenCheck(String.format("@copy \"%s\" \"%s\"", srcFileStr, dstFileStr));
-        errorCheck();
+        line(String.format("@copy \"%s\" \"%s\"", srcFileStr, dstFileStr));
       } else {
-        lineWithLenCheck(String.format("@%s symlink \"%s\" \"%s\"", Shell.WINUTILS,
+        line(String.format("@%s symlink \"%s\" \"%s\"", Shell.WINUTILS,
           dstFileStr, srcFileStr));
-        errorCheck();
       }
     }
 
     @Override
-    protected void mkdir(Path path) throws IOException {
-      lineWithLenCheck(String.format("@if not exist \"%s\" mkdir \"%s\"",
-          path.toString(), path.toString()));
-      errorCheck();
+    protected void mkdir(Path path) {
+      line("@if not exist ", path.toString(), " mkdir ", path.toString());
     }
   }
 
@@ -760,7 +730,8 @@ public class ContainerLaunch implements Callable<Integer> {
       Map<String,String> environment, Map<Path,List<String>> resources,
       List<String> command)
       throws IOException {
-    ShellScriptBuilder sb = ShellScriptBuilder.create();
+    ShellScriptBuilder sb = Shell.WINDOWS ? new WindowsShellScriptBuilder() :
+      new UnixShellScriptBuilder();
     if (environment != null) {
       for (Map.Entry<String,String> env : environment.entrySet()) {
         sb.env(env.getKey().toString(), env.getValue().toString());

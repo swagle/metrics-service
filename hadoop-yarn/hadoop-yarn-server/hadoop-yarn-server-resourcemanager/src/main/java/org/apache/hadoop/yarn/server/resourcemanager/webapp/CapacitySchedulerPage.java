@@ -23,6 +23,7 @@ import static org.apache.hadoop.yarn.util.StringHelper.join;
 import java.util.ArrayList;
 
 import org.apache.hadoop.util.StringUtils;
+import org.apache.commons.lang.StringEscapeUtils;
 import org.apache.hadoop.yarn.server.resourcemanager.ResourceManager;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity.CSQueue;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity.CapacityScheduler;
@@ -108,7 +109,7 @@ class CapacitySchedulerPage extends RmView {
           _("Absolute Used Capacity:", percent(lqinfo.getAbsoluteUsedCapacity() / 100)).
           _("Absolute Capacity:", percent(lqinfo.getAbsoluteCapacity() / 100)).
           _("Absolute Max Capacity:", percent(lqinfo.getAbsoluteMaxCapacity() / 100)).
-          _("Used Resources:", lqinfo.getResourcesUsed().toString()).
+          _("Used Resources:", StringEscapeUtils.escapeHtml(lqinfo.getResourcesUsed().toString())).
           _("Num Schedulable Applications:", Integer.toString(lqinfo.getNumActiveApplications())).
           _("Num Non-Schedulable Applications:", Integer.toString(lqinfo.getNumPendingApplications())).
           _("Num Containers:", Integer.toString(lqinfo.getNumContainers())).
@@ -262,7 +263,7 @@ class CapacitySchedulerPage extends RmView {
           "    var q = $('.q', data.rslt.obj).first().text();",
           "    if (q == 'root') q = '';",
           "    else q = '^' + q.substr(q.lastIndexOf('.') + 1) + '$';",
-          "    $('#apps').dataTable().fnFilter(q, 4, true);",
+          "    $('#apps').dataTable().fnFilter(q, 3, true);",
           "  });",
           "  $('#cs').show();",
           "});")._().

@@ -36,6 +36,7 @@ public enum RMAppAttemptEventType {
   UNREGISTERED,
 
   // Source: Containers
+  CONTAINER_ACQUIRED,
   CONTAINER_ALLOCATED,
   CONTAINER_FINISHED,
   

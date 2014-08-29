@@ -19,7 +19,6 @@
 package org.apache.hadoop.yarn.server.resourcemanager.scheduler.fair;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -60,8 +59,6 @@ public class FSSchedulerApp extends SchedulerApplicationAttempt {
   private AppSchedulable appSchedulable;
 
   final Map<RMContainer, Long> preemptionMap = new HashMap<RMContainer, Long>();
-
-  private Resource preemptedResources = Resources.createResource(0);
   
   public FSSchedulerApp(ApplicationAttemptId applicationAttemptId, 
       String user, FSLeafQueue queue, ActiveUsersManager activeUsersManager,
@@ -82,9 +79,6 @@ public class FSSchedulerApp extends SchedulerApplicationAttempt {
     
     Container container = rmContainer.getContainer();
     ContainerId containerId = container.getId();
-    
-    // Remove from the list of newly allocated containers if found
-    newlyAllocatedContainers.remove(rmContainer);
     
     // Inform the container
     rmContainer.handle(
@@ -285,12 +279,8 @@ public class FSSchedulerApp extends SchedulerApplicationAttempt {
     liveContainers.put(container.getId(), rmContainer);    
 
     // Update consumption and track allocations
-    List<ResourceRequest> resourceRequestList = appSchedulingInfo.allocate(
-        type, node, priority, request, container);
+    appSchedulingInfo.allocate(type, node, priority, request, container);
     Resources.addTo(currentConsumption, container.getResource());
-
-    // Update resource requests related to "request" and store in RMContainer
-    ((RMContainerImpl) rmContainer).setResourceRequests(resourceRequestList);
 
     // Inform the container
     rmContainer.handle(
@@ -326,7 +316,6 @@ public class FSSchedulerApp extends SchedulerApplicationAttempt {
   public void addPreemption(RMContainer container, long time) {
     assert preemptionMap.get(container) == null;
     preemptionMap.put(container, time);
-    Resources.addTo(preemptedResources, container.getAllocatedResource());
   }
 
   public Long getContainerPreemptionTime(RMContainer container) {
@@ -340,21 +329,5 @@ public class FSSchedulerApp extends SchedulerApplicationAttempt {
   @Override
   public FSLeafQueue getQueue() {
     return (FSLeafQueue)super.getQueue();
-  }
-
-  public Resource getPreemptedResources() {
-    return preemptedResources;
-  }
-
-  public void resetPreemptedResources() {
-    preemptedResources = Resources.createResource(0);
-    for (RMContainer container : getPreemptionContainers()) {
-      Resources.addTo(preemptedResources, container.getAllocatedResource());
-    }
-  }
-
-  public void clearPreemptedResources() {
-    preemptedResources.setMemory(0);
-    preemptedResources.setVirtualCores(0);
   }
 }

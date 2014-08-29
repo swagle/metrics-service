@@ -20,7 +20,7 @@ package org.apache.hadoop.yarn.server.applicationhistoryservice;
 
 import java.io.IOException;
 
-import org.junit.Assert;
+import junit.framework.Assert;
 
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
 import org.apache.hadoop.yarn.api.records.ApplicationId;
@@ -198,7 +198,7 @@ public class TestMemoryApplicationHistoryStore extends
       writeContainerFinishData(containerId);
     }
     long usedMemoryAfter = (runtime.totalMemory() - runtime.freeMemory()) / mb;
-    Assert.assertTrue((usedMemoryAfter - usedMemoryBefore) < 400);
+    Assert.assertTrue((usedMemoryAfter - usedMemoryBefore) < 200);
   }
 
 }

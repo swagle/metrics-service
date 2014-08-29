@@ -53,7 +53,6 @@ import org.apache.hadoop.yarn.exceptions.YarnRuntimeException;
 import org.apache.hadoop.yarn.server.api.ResourceManagerConstants;
 import org.apache.hadoop.yarn.server.api.ResourceTracker;
 import org.apache.hadoop.yarn.server.api.ServerRMProxy;
-import org.apache.hadoop.yarn.server.api.protocolrecords.NMContainerStatus;
 import org.apache.hadoop.yarn.server.api.protocolrecords.NodeHeartbeatRequest;
 import org.apache.hadoop.yarn.server.api.protocolrecords.NodeHeartbeatResponse;
 import org.apache.hadoop.yarn.server.api.protocolrecords.RegisterNodeManagerRequest;
@@ -247,12 +246,13 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
   @VisibleForTesting
   protected void registerWithRM()
       throws YarnException, IOException {
-    List<NMContainerStatus> containerReports = getNMContainerStatuses();
+    List<ContainerStatus> containerStatuses = getContainerStatuses();
     RegisterNodeManagerRequest request =
         RegisterNodeManagerRequest.newInstance(nodeId, httpPort, totalResource,
-          nodeManagerVersionId, containerReports, getRunningApplications());
-    if (containerReports != null) {
-      LOG.info("Registering with RM using containers :" + containerReports);
+          nodeManagerVersionId, containerStatuses);
+    if (containerStatuses != null) {
+      LOG.info("Registering with RM using finished containers :"
+          + containerStatuses);
     }
     RegisterNodeManagerResponse regNMResponse =
         resourceTracker.registerNodeManager(request);
@@ -343,6 +343,10 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
           + ", " + nodeHealthStatus.getHealthReport());
     }
     List<ContainerStatus> containersStatuses = getContainerStatuses();
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(this.nodeId + " sending out status for "
+          + containersStatuses.size() + " containers");
+    }
     NodeStatus nodeStatus =
         NodeStatus.newInstance(nodeId, responseId, containersStatuses,
           createKeepAliveApplicationList(), nodeHealthStatus);
@@ -369,36 +373,8 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
       }
     }
     if (LOG.isDebugEnabled()) {
-      LOG.debug("Sending out " + containerStatuses.size()
-          + " container statuses: " + containerStatuses);
+      LOG.debug("Sending out container statuses: " + containerStatuses);
     }
-    return containerStatuses;
-  }
-  
-  private List<ApplicationId> getRunningApplications() {
-    List<ApplicationId> runningApplications = new ArrayList<ApplicationId>();
-    runningApplications.addAll(this.context.getApplications().keySet());
-    return runningApplications;
-  }
-
-  // These NMContainerStatus are sent on NM registration and used by YARN only.
-  private List<NMContainerStatus> getNMContainerStatuses() {
-    List<NMContainerStatus> containerStatuses =
-        new ArrayList<NMContainerStatus>();
-    for (Container container : this.context.getContainers().values()) {
-      NMContainerStatus status =
-          container.getNMContainerStatus();
-      containerStatuses.add(status);
-      if (status.getContainerState().equals(ContainerState.COMPLETE)) {
-        // Adding to finished containers cache. Cache will keep it around at
-        // least for #durationToTrackStoppedContainers duration. In the
-        // subsequent call to stop container it will get removed from cache.
-        updateStoppedContainersInCache(container.getContainerId());
-        addCompletedContainer(container);
-      }
-    }
-    LOG.info("Sending out " + containerStatuses.size()
-      + " NM container statuses: " + containerStatuses);
     return containerStatuses;
   }
 
@@ -520,7 +496,6 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
                     + " hence shutting down.");
               LOG.warn("Message from ResourceManager: "
                   + response.getDiagnosticsMessage());
-              context.setDecommissioned(true);
               dispatcher.getEventHandler().handle(
                   new NodeManagerEvent(NodeManagerEventType.SHUTDOWN));
               break;

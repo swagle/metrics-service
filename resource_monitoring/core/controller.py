@@ -17,17 +17,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 '''
-from Queue import Queue
+
 import logging
 import signal
 import threading
 import time
 import sys
+from Queue import Queue
 from threading import Timer
 from application_metric_map import ApplicationMetricMap
 from config_reader import Configuration
-from event_definition import Event, HostMetricCollectEvent, ProcessMetricCollectEvent
+from event_definition import HostMetricCollectEvent, ProcessMetricCollectEvent
 from metric_collector import MetricsCollector
+from emitter import Emitter
+from host_info import HostInfo
 
 logger = logging.getLogger()
 
@@ -39,15 +42,20 @@ class Controller(threading.Thread):
     logger.debug('Initializing Controller thread.')
     self.lock = threading.Lock()
     self.config = config
+    self.metrics_config = config.getMetricGroupConfig()
     self.events_cache = []
-    self.application_metric_map = ApplicationMetricMap()
+    hostinfo = HostInfo()
+    self.application_metric_map = ApplicationMetricMap(hostinfo.get_hostname(),
+                                                       hostinfo.get_ip_address())
     self.event_queue = Queue(config.get_max_queue_size())
     self.metric_collector = MetricsCollector(self.event_queue, self.application_metric_map)
     self.server_url = config.get_server_address()
     self.sleep_interval = config.get_collector_sleep_interval()
     self.initialize_events_cache()
+    self.emitter = Emitter(self.config, self.application_metric_map)
 
   def run(self):
+    logger.info('Running Controller thread: %s' % threading.currentThread().getName())
     # Wake every 5 seconds to push events to the queue
     while True:
       if (self.event_queue.full()):
@@ -67,31 +75,35 @@ class Controller(threading.Thread):
     pass
 
   def initialize_events_cache(self):
+    self.events_cache = []
     try:
-      host_metrics_groups = self.config['host_metric_groups']
-      process_metrics_groups = self.config['process_metric_groups']
+      host_metrics_groups = self.metrics_config['host_metric_groups']
+      process_metrics_groups = self.metrics_config['process_metric_groups']
     except KeyError, ke:
       logger.warn('Error loading metric groups.')
       raise ke
     pass
 
     if host_metrics_groups:
-      for name, properties in host_metrics_groups:
+      for name, properties in host_metrics_groups.iteritems():
         event = HostMetricCollectEvent(properties, name)
-        logger.info('Adding event to cache, %s : %s' % name, properties)
+        logger.info('Adding event to cache, {0} : {1}'.format(name, properties))
         self.events_cache.append(event)
       pass
     pass
 
     if process_metrics_groups:
-      for name, properties in process_metrics_groups:
+      for name, properties in process_metrics_groups.iteritems():
         event = ProcessMetricCollectEvent(properties, name)
-        logger.info('Adding event to cache, %s : %s' % name, properties)
-        self.events_cache.append(event)
+        logger.info('Adding event to cache, {0} : {1}'.format(name, properties))
+        #self.events_cache.append(event)
       pass
     pass
 
   pass
+
+  def start_emitter(self):
+    self.emitter.start()
 
 def main(argv=None):
   # Allow Ctrl-C
@@ -101,15 +113,14 @@ def main(argv=None):
   collector = Controller(config)
 
   logger.setLevel(config.get_log_level())
-  formatter = logging.Formatter("%(asctime)s %(filename)s:%(lineno)d - \
-    %(message)s")
-  stream_handler = logging.StreamHandler()
+  #formatter = logging.Formatter("%(asctime)s %(filename)s:%(lineno)d - %(message)s")
+  stream_handler = logging.StreamHandler(sys.stdout)
   stream_handler.setFormatter(formatter)
   logger.addHandler(stream_handler)
-  logger.info('Starting Server RPC Thread: %s' % ' '.join(sys.argv))
+  logger.info('Starting Server RPC Thread: {0}'.format(sys.argv))
 
   collector.start()
-
+  collector.start_emitter()
 
 if __name__ == '__main__':
   main()

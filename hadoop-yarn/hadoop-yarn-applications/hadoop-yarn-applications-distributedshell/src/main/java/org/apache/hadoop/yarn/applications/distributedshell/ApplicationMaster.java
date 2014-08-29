@@ -27,7 +27,6 @@ import java.io.StringReader;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
-import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -83,7 +82,6 @@ import org.apache.hadoop.yarn.api.records.NodeReport;
 import org.apache.hadoop.yarn.api.records.Priority;
 import org.apache.hadoop.yarn.api.records.Resource;
 import org.apache.hadoop.yarn.api.records.ResourceRequest;
-import org.apache.hadoop.yarn.api.records.URL;
 import org.apache.hadoop.yarn.api.records.timeline.TimelineEntity;
 import org.apache.hadoop.yarn.api.records.timeline.TimelineEvent;
 import org.apache.hadoop.yarn.client.api.AMRMClient.ContainerRequest;
@@ -93,8 +91,10 @@ import org.apache.hadoop.yarn.client.api.async.NMClientAsync;
 import org.apache.hadoop.yarn.client.api.async.impl.NMClientAsyncImpl;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.hadoop.yarn.exceptions.YarnException;
+import org.apache.hadoop.yarn.exceptions.YarnRuntimeException;
 import org.apache.hadoop.yarn.security.AMRMTokenIdentifier;
 import org.apache.hadoop.yarn.util.ConverterUtils;
+import org.apache.hadoop.yarn.util.Records;
 import org.apache.log4j.LogManager;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -185,9 +185,6 @@ public class ApplicationMaster {
   @SuppressWarnings("rawtypes")
   private AMRMClientAsync amRMClient;
 
-  // In both secure and non-secure modes, this points to the job-submitter.
-  private UserGroupInformation appSubmitterUgi;
-
   // Handle to communicate with the Node Manager
   private NMClientAsync nmClientAsync;
   // Listen to process the response from the Node Manager
@@ -208,8 +205,7 @@ public class ApplicationMaster {
 
   // App Master configuration
   // No. of containers to run shell command on
-  @VisibleForTesting
-  protected int numTotalContainers = 1;
+  private int numTotalContainers = 1;
   // Memory to request for the container on which the shell command will run
   private int containerMemory = 10;
   // VirtualCores to request for the container on which the shell command will run
@@ -240,7 +236,7 @@ public class ApplicationMaster {
 
   // Location of shell script ( obtained from info set in env )
   // Shell script path in fs
-  private String scriptPath = "";
+  private String shellScriptPath = "";
   // Timestamp needed for creating a local resource
   private long shellScriptPathTimestamp = 0;
   // File length needed for local resource
@@ -455,7 +451,7 @@ public class ApplicationMaster {
     }
 
     if (envs.containsKey(DSConstants.DISTRIBUTEDSHELLSCRIPTLOCATION)) {
-      scriptPath = envs.get(DSConstants.DISTRIBUTEDSHELLSCRIPTLOCATION);
+      shellScriptPath = envs.get(DSConstants.DISTRIBUTEDSHELLSCRIPTLOCATION);
 
       if (envs.containsKey(DSConstants.DISTRIBUTEDSHELLSCRIPTTIMESTAMP)) {
         shellScriptPathTimestamp = Long.valueOf(envs
@@ -466,10 +462,10 @@ public class ApplicationMaster {
             .get(DSConstants.DISTRIBUTEDSHELLSCRIPTLEN));
       }
 
-      if (!scriptPath.isEmpty()
+      if (!shellScriptPath.isEmpty()
           && (shellScriptPathTimestamp <= 0 || shellScriptPathLen <= 0)) {
         LOG.error("Illegal values in env for shell script path" + ", path="
-            + scriptPath + ", len=" + shellScriptPathLen + ", timestamp="
+            + shellScriptPath + ", len=" + shellScriptPathLen + ", timestamp="
             + shellScriptPathTimestamp);
         throw new IllegalArgumentException(
             "Illegal values in env for shell script path");
@@ -523,30 +519,19 @@ public class ApplicationMaster {
           + appAttemptID.toString(), e);
     }
 
-    // Note: Credentials, Token, UserGroupInformation, DataOutputBuffer class
-    // are marked as LimitedPrivate
     Credentials credentials =
         UserGroupInformation.getCurrentUser().getCredentials();
     DataOutputBuffer dob = new DataOutputBuffer();
     credentials.writeTokenStorageToStream(dob);
     // Now remove the AM->RM token so that containers cannot access it.
     Iterator<Token<?>> iter = credentials.getAllTokens().iterator();
-    LOG.info("Executing with tokens:");
     while (iter.hasNext()) {
       Token<?> token = iter.next();
-      LOG.info(token);
       if (token.getKind().equals(AMRMTokenIdentifier.KIND_NAME)) {
         iter.remove();
       }
     }
     allTokens = ByteBuffer.wrap(dob.getData(), 0, dob.getLength());
-
-    // Create appSubmitterUgi and add original tokens to it
-    String appSubmitterUserName =
-        System.getenv(ApplicationConstants.Environment.USER.name());
-    appSubmitterUgi =
-        UserGroupInformation.createRemoteUser(appSubmitterUserName);
-    appSubmitterUgi.addCredentials(credentials);
 
     AMRMClientAsync.CallbackHandler allocListener = new RMCallbackHandler();
     amRMClient = AMRMClientAsync.createAMRMClientAsync(1000, allocListener);
@@ -595,8 +580,8 @@ public class ApplicationMaster {
 
     List<Container> previousAMRunningContainers =
         response.getContainersFromPreviousAttempts();
-    LOG.info(appAttemptID + " received " + previousAMRunningContainers.size()
-      + " previous attempts' running containers on AM registration.");
+    LOG.info("Received " + previousAMRunningContainers.size()
+        + " previous AM's running containers on AM registration.");
     numAllocatedContainers.addAndGet(previousAMRunningContainers.size());
 
     int numTotalContainersToRequest =
@@ -611,7 +596,7 @@ public class ApplicationMaster {
       ContainerRequest containerAsk = setupContainerAskForRM();
       amRMClient.addContainerRequest(containerAsk);
     }
-    numRequestedContainers.set(numTotalContainers);
+    numRequestedContainers.set(numTotalContainersToRequest);
     try {
       publishApplicationAttemptEvent(timelineClient, appAttemptID.toString(),
           DSEvent.DS_APP_ATTEMPT_END);
@@ -690,7 +675,7 @@ public class ApplicationMaster {
       LOG.info("Got response from RM for container ask, completedCnt="
           + completedContainers.size());
       for (ContainerStatus containerStatus : completedContainers) {
-        LOG.info(appAttemptID + " got container status for containerID="
+        LOG.info("Got container status for containerID="
             + containerStatus.getContainerId() + ", state="
             + containerStatus.getState() + ", exitStatus="
             + containerStatus.getExitStatus() + ", diagnostics="
@@ -903,6 +888,11 @@ public class ApplicationMaster {
     public void run() {
       LOG.info("Setting up container launch container for containerid="
           + container.getId());
+      ContainerLaunchContext ctx = Records
+          .newRecord(ContainerLaunchContext.class);
+
+      // Set the environment
+      ctx.setEnvironment(shellEnv);
 
       // Set the local resources
       Map<String, LocalResource> localResources = new HashMap<String, LocalResource>();
@@ -911,35 +901,32 @@ public class ApplicationMaster {
       // resources too.
       // In this scenario, if a shell script is specified, we need to have it
       // copied and made available to the container.
-      if (!scriptPath.isEmpty()) {
-        Path renamedScriptPath = null;
+      if (!shellScriptPath.isEmpty()) {
+        Path renamedSchellScriptPath = null;
         if (Shell.WINDOWS) {
-          renamedScriptPath = new Path(scriptPath + ".bat");
+          renamedSchellScriptPath = new Path(shellScriptPath + ".bat");
         } else {
-          renamedScriptPath = new Path(scriptPath + ".sh");
+          renamedSchellScriptPath = new Path(shellScriptPath + ".sh");
+        }
+        try {
+          FileSystem fs = renamedSchellScriptPath.getFileSystem(conf);
+          fs.rename(new Path(shellScriptPath), renamedSchellScriptPath);
+        } catch (IOException e) {
+          LOG.warn("Not able to add suffix (.bat/.sh) to the shell script filename");
+          throw new YarnRuntimeException(e);
         }
 
+        LocalResource shellRsrc = Records.newRecord(LocalResource.class);
+        shellRsrc.setType(LocalResourceType.FILE);
+        shellRsrc.setVisibility(LocalResourceVisibility.APPLICATION);
         try {
-          // rename the script file based on the underlying OS syntax.
-          renameScriptFile(renamedScriptPath);
-        } catch (Exception e) {
-          LOG.error(
-              "Not able to add suffix (.bat/.sh) to the shell script filename",
-              e);
-          // We know we cannot continue launching the container
-          // so we should release it.
-          numCompletedContainers.incrementAndGet();
-          numFailedContainers.incrementAndGet();
-          return;
-        }
-
-        URL yarnUrl = null;
-        try {
-          yarnUrl = ConverterUtils.getYarnUrlFromURI(
-            new URI(renamedScriptPath.toString()));
+          shellRsrc.setResource(ConverterUtils.getYarnUrlFromURI(new URI(
+            renamedSchellScriptPath.toString())));
         } catch (URISyntaxException e) {
           LOG.error("Error when trying to use shell script path specified"
-              + " in env, path=" + renamedScriptPath, e);
+              + " in env, path=" + renamedSchellScriptPath);
+          e.printStackTrace();
+
           // A failure scenario on bad input such as invalid shell script path
           // We know we cannot continue launching the container
           // so we should release it.
@@ -948,13 +935,13 @@ public class ApplicationMaster {
           numFailedContainers.incrementAndGet();
           return;
         }
-        LocalResource shellRsrc = LocalResource.newInstance(yarnUrl,
-          LocalResourceType.FILE, LocalResourceVisibility.APPLICATION,
-          shellScriptPathLen, shellScriptPathTimestamp);
+        shellRsrc.setTimestamp(shellScriptPathTimestamp);
+        shellRsrc.setSize(shellScriptPathLen);
         localResources.put(Shell.WINDOWS ? ExecBatScripStringtPath :
             ExecShellStringPath, shellRsrc);
         shellCommand = Shell.WINDOWS ? windows_command : linux_bash_command;
       }
+      ctx.setLocalResources(localResources);
 
       // Set the necessary command to execute on the allocated container
       Vector<CharSequence> vargs = new Vector<CharSequence>(5);
@@ -962,7 +949,7 @@ public class ApplicationMaster {
       // Set executable command
       vargs.add(shellCommand);
       // Set shell script path
-      if (!scriptPath.isEmpty()) {
+      if (!shellScriptPath.isEmpty()) {
         vargs.add(Shell.WINDOWS ? ExecBatScripStringtPath
             : ExecShellStringPath);
       }
@@ -981,35 +968,19 @@ public class ApplicationMaster {
 
       List<String> commands = new ArrayList<String>();
       commands.add(command.toString());
+      ctx.setCommands(commands);
 
-      // Set up ContainerLaunchContext, setting local resource, environment,
-      // command and token for constructor.
+      // Set up tokens for the container too. Today, for normal shell commands,
+      // the container in distribute-shell doesn't need any tokens. We are
+      // populating them mainly for NodeManagers to be able to download any
+      // files in the distributed file-system. The tokens are otherwise also
+      // useful in cases, for e.g., when one is running a "hadoop dfs" command
+      // inside the distributed shell.
+      ctx.setTokens(allTokens.duplicate());
 
-      // Note for tokens: Set up tokens for the container too. Today, for normal
-      // shell commands, the container in distribute-shell doesn't need any
-      // tokens. We are populating them mainly for NodeManagers to be able to
-      // download anyfiles in the distributed file-system. The tokens are
-      // otherwise also useful in cases, for e.g., when one is running a
-      // "hadoop dfs" command inside the distributed shell.
-      ContainerLaunchContext ctx = ContainerLaunchContext.newInstance(
-        localResources, shellEnv, commands, null, allTokens.duplicate(), null);
       containerListener.addContainer(container.getId(), container);
       nmClientAsync.startContainerAsync(container, ctx);
     }
-  }
-
-  private void renameScriptFile(final Path renamedScriptPath)
-      throws IOException, InterruptedException {
-    appSubmitterUgi.doAs(new PrivilegedExceptionAction<Void>() {
-      @Override
-      public Void run() throws IOException {
-        FileSystem fs = renamedScriptPath.getFileSystem(conf);
-        fs.rename(new Path(scriptPath), renamedScriptPath);
-        return null;
-      }
-    });
-    LOG.info("User " + appSubmitterUgi.getUserName()
-        + " added suffix(.sh/.bat) to script file as " + renamedScriptPath);
   }
 
   /**
@@ -1021,13 +992,15 @@ public class ApplicationMaster {
     // setup requirements for hosts
     // using * as any host will do for the distributed shell app
     // set the priority for the request
+    Priority pri = Records.newRecord(Priority.class);
     // TODO - what is the range for priority? how to decide?
-    Priority pri = Priority.newInstance(requestPriority);
+    pri.setPriority(requestPriority);
 
     // Set up resource type requirements
     // For now, memory and CPU are supported so we set memory and cpu requirements
-    Resource capability = Resource.newInstance(containerMemory,
-      containerVirtualCores);
+    Resource capability = Records.newRecord(Resource.class);
+    capability.setMemory(containerMemory);
+    capability.setVirtualCores(containerVirtualCores);
 
     ContainerRequest request = new ContainerRequest(capability, null, null,
         pri);

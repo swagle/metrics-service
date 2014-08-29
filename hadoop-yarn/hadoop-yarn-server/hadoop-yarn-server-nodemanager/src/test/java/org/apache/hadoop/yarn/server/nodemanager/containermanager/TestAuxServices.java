@@ -26,25 +26,20 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-import java.io.File;
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Map;
 
+import junit.framework.Assert;
+
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.FileUtil;
-import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.service.Service;
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
 import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.api.records.ContainerId;
-import org.apache.hadoop.yarn.api.records.Priority;
 import org.apache.hadoop.yarn.api.records.Resource;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.hadoop.yarn.security.ContainerTokenIdentifier;
@@ -53,17 +48,14 @@ import org.apache.hadoop.yarn.server.api.ApplicationTerminationContext;
 import org.apache.hadoop.yarn.server.api.AuxiliaryService;
 import org.apache.hadoop.yarn.server.api.ContainerInitializationContext;
 import org.apache.hadoop.yarn.server.api.ContainerTerminationContext;
-import org.apache.hadoop.yarn.server.nodemanager.containermanager.container.Container;
-import org.apache.hadoop.yarn.server.nodemanager.containermanager.container.ContainerImpl;
-import org.junit.Assert;
+import org.apache.hadoop.yarn.server.nodemanager.containermanager.container
+    .Container;
+import org.apache.hadoop.yarn.server.nodemanager.containermanager.container
+    .ContainerImpl;
 import org.junit.Test;
 
 public class TestAuxServices {
   private static final Log LOG = LogFactory.getLog(TestAuxServices.class);
-  private static final File TEST_DIR = new File(
-      System.getProperty("test.build.data",
-          System.getProperty("java.io.tmpdir")),
-      TestAuxServices.class.getName());
 
   static class LightService extends AuxiliaryService implements Service
        {
@@ -190,7 +182,7 @@ public class TestAuxServices {
     ApplicationAttemptId attemptId = ApplicationAttemptId.newInstance(appId1, 1);
     ContainerTokenIdentifier cti = new ContainerTokenIdentifier(
         ContainerId.newInstance(attemptId, 1), "", "",
-        Resource.newInstance(1, 1), 0,0,0, Priority.newInstance(0), 0);
+        Resource.newInstance(1, 1), 0,0,0);
     Container container = new ContainerImpl(null, null, null, null, null, cti);
     ContainerId containerId = container.getContainerId();
     Resource resource = container.getResource();
@@ -325,83 +317,6 @@ public class TestAuxServices {
       assertTrue(ex.getMessage().contains("The ServiceName: 1Asrv1 set in " +
           "yarn.nodemanager.aux-services is invalid.The valid service name " +
           "should only contain a-zA-Z0-9_ and can not start with numbers"));
-    }
-  }
-
-  @Test
-  public void testAuxServiceRecoverySetup() throws IOException {
-    Configuration conf = new YarnConfiguration();
-    conf.setBoolean(YarnConfiguration.NM_RECOVERY_ENABLED, true);
-    conf.set(YarnConfiguration.NM_RECOVERY_DIR, TEST_DIR.toString());
-    conf.setStrings(YarnConfiguration.NM_AUX_SERVICES,
-        new String[] { "Asrv", "Bsrv" });
-    conf.setClass(String.format(YarnConfiguration.NM_AUX_SERVICE_FMT, "Asrv"),
-        RecoverableServiceA.class, Service.class);
-    conf.setClass(String.format(YarnConfiguration.NM_AUX_SERVICE_FMT, "Bsrv"),
-        RecoverableServiceB.class, Service.class);
-    try {
-      final AuxServices aux = new AuxServices();
-      aux.init(conf);
-      Assert.assertEquals(2, aux.getServices().size());
-      File auxStorageDir = new File(TEST_DIR,
-          AuxServices.STATE_STORE_ROOT_NAME);
-      Assert.assertEquals(2, auxStorageDir.listFiles().length);
-      aux.close();
-    } finally {
-      FileUtil.fullyDelete(TEST_DIR);
-    }
-  }
-
-  static class RecoverableAuxService extends AuxiliaryService {
-    static final FsPermission RECOVERY_PATH_PERMS =
-        new FsPermission((short)0700);
-
-    String auxName;
-
-    RecoverableAuxService(String name, String auxName) {
-      super(name);
-      this.auxName = auxName;
-    }
-
-    @Override
-    protected void serviceInit(Configuration conf) throws Exception {
-      super.serviceInit(conf);
-      Path storagePath = getRecoveryPath();
-      Assert.assertNotNull("Recovery path not present when aux service inits",
-          storagePath);
-      Assert.assertTrue(storagePath.toString().contains(auxName));
-      FileSystem fs = FileSystem.getLocal(conf);
-      Assert.assertTrue("Recovery path does not exist",
-          fs.exists(storagePath));
-      Assert.assertEquals("Recovery path has wrong permissions",
-          new FsPermission((short)0700),
-          fs.getFileStatus(storagePath).getPermission());
-    }
-
-    @Override
-    public void initializeApplication(
-        ApplicationInitializationContext initAppContext) {
-    }
-
-    @Override
-    public void stopApplication(ApplicationTerminationContext stopAppContext) {
-    }
-
-    @Override
-    public ByteBuffer getMetaData() {
-      return null;
-    }
-  }
-
-  static class RecoverableServiceA extends RecoverableAuxService {
-    RecoverableServiceA() {
-      super("RecoverableServiceA", "Asrv");
-    }
-  }
-
-  static class RecoverableServiceB extends RecoverableAuxService {
-    RecoverableServiceB() {
-      super("RecoverableServiceB", "Bsrv");
     }
   }
 }

@@ -41,9 +41,9 @@ class MetricsCollector():
   pass
 
   def process_event(self, event):
-    if event._classname = HostMetricCollectEvent.__name__:
-      self.process_host_collection_event()
-    elif event._classname = ProcessMetricCollectEvent.__name__:
+    if event.get_classname() == HostMetricCollectEvent.__name__:
+      self.process_host_collection_event(event)
+    elif event.get_classname() == ProcessMetricCollectEvent.__name__:
       self.process_process_collection_event(event)
     else:
       logger.warn('Unknown event in queue')
@@ -65,15 +65,27 @@ class MetricsCollector():
     elif 'mem' in event.get_group_name():
       metrics = self.host_info.get_mem_info()
 
+    elif 'all' in event.get_group_name():
+      metrics = {}
+      metrics.update(self.host_info.get_cpu_times())
+      metrics.update(self.host_info.get_combined_disk_usage())
+      metrics.update(self.host_info.get_network_info())
+      metrics.update(self.host_info.get_mem_info())
+
     else:
       logger.warn('Unknown metric group.')
     pass
 
     if metrics:
-      for metric_name, value in metrics:
+      self.application_metric_map.acquire_lock()
+      for metric_name, value in metrics.iteritems():
         self.application_metric_map.put_metric(DEFAULT_HOST_APP_ID, metric_name, startTime, value)
       pass
+      self.application_metric_map.release_lock()
     pass
 
   def process_process_collection_event(self, event):
+    """
+    Collect Process level metrics and update the application metric map
+    """
     pass

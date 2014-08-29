@@ -33,11 +33,10 @@ import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
 import org.apache.hadoop.yarn.api.records.QueueACL;
 import org.apache.hadoop.yarn.api.records.QueueUserACLInfo;
 import org.apache.hadoop.yarn.api.records.Resource;
-import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.RMContainer;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.ActiveUsersManager;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.SchedulerAppUtils;
-import org.apache.hadoop.yarn.server.resourcemanager.scheduler.SchedulerApplicationAttempt;
 import org.apache.hadoop.yarn.util.resource.Resources;
+import org.apache.hadoop.yarn.server.resourcemanager.scheduler.SchedulerApplication;
 
 @Private
 @Unstable
@@ -56,9 +55,6 @@ public class FSLeafQueue extends FSQueue {
   private long lastTimeAtMinShare;
   private long lastTimeAtHalfFairShare;
   
-  // Track the AM resource usage for this queue
-  private Resource amResourceUsage;
-
   private final ActiveUsersManager activeUsersManager;
   
   public FSLeafQueue(String name, FairScheduler scheduler,
@@ -67,7 +63,6 @@ public class FSLeafQueue extends FSQueue {
     this.lastTimeAtMinShare = scheduler.getClock().getTime();
     this.lastTimeAtHalfFairShare = scheduler.getClock().getTime();
     activeUsersManager = new ActiveUsersManager(getMetrics());
-    amResourceUsage = Resource.newInstance(0, 0);
   }
   
   public void addApp(FSSchedulerApp app, boolean runnable) {
@@ -91,10 +86,6 @@ public class FSLeafQueue extends FSQueue {
    */
   public boolean removeApp(FSSchedulerApp app) {
     if (runnableAppScheds.remove(app.getAppSchedulable())) {
-      // Update AM resource usage
-      if (app.isAmRunning() && app.getAMResource() != null) {
-        Resources.subtractFrom(amResourceUsage, app.getAMResource());
-      }
       return true;
     } else if (nonRunnableAppScheds.remove(app.getAppSchedulable())) {
       return false;
@@ -152,10 +143,6 @@ public class FSLeafQueue extends FSQueue {
       Resources.addTo(usage, app.getResourceUsage());
     }
     return usage;
-  }
-
-  public Resource getAmResourceUsage() {
-    return amResourceUsage;
   }
 
   @Override
@@ -222,37 +209,6 @@ public class FSLeafQueue extends FSQueue {
   }
 
   @Override
-  public RMContainer preemptContainer() {
-    RMContainer toBePreempted = null;
-
-    // If this queue is not over its fair share, reject
-    if (!preemptContainerPreCheck()) {
-      return toBePreempted;
-    }
-
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("Queue " + getName() + " is going to preempt a container " +
-          "from its applications.");
-    }
-
-    // Choose the app that is most over fair share
-    Comparator<Schedulable> comparator = policy.getComparator();
-    AppSchedulable candidateSched = null;
-    for (AppSchedulable sched : runnableAppScheds) {
-      if (candidateSched == null ||
-          comparator.compare(sched, candidateSched) > 0) {
-        candidateSched = sched;
-      }
-    }
-
-    // Preempt from the selected app
-    if (candidateSched != null) {
-      toBePreempted = candidateSched.preemptContainer();
-    }
-    return toBePreempted;
-  }
-
-  @Override
   public List<FSQueue> getChildQueues() {
     return new ArrayList<FSQueue>(1);
   }
@@ -297,46 +253,5 @@ public class FSLeafQueue extends FSQueue {
   @Override
   public ActiveUsersManager getActiveUsersManager() {
     return activeUsersManager;
-  }
-
-  /**
-   * Check whether this queue can run this application master under the
-   * maxAMShare limit
-   *
-   * @param amResource
-   * @return true if this queue can run
-   */
-  public boolean canRunAppAM(Resource amResource) {
-    float maxAMShare =
-        scheduler.getAllocationConfiguration().getQueueMaxAMShare(getName());
-    if (Math.abs(maxAMShare - -1.0f) < 0.0001) {
-      return true;
-    }
-    Resource maxAMResource = Resources.multiply(getFairShare(), maxAMShare);
-    Resource ifRunAMResource = Resources.add(amResourceUsage, amResource);
-    return !policy
-        .checkIfAMResourceUsageOverLimit(ifRunAMResource, maxAMResource);
-  }
-
-  public void addAMResourceUsage(Resource amResource) {
-    if (amResource != null) {
-      Resources.addTo(amResourceUsage, amResource);
-    }
-  }
-
-  @Override
-  public void recoverContainer(Resource clusterResource,
-      SchedulerApplicationAttempt schedulerAttempt, RMContainer rmContainer) {
-    // TODO Auto-generated method stub
-  }
-
-  /**
-   * Helper method to check if the queue should preempt containers
-   *
-   * @return true if check passes (can preempt) or false otherwise
-   */
-  private boolean preemptContainerPreCheck() {
-    return parent.getPolicy().checkIfUsageOverFairShare(getResourceUsage(),
-        getFairShare());
   }
 }

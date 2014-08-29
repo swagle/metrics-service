@@ -156,7 +156,8 @@ public class BuilderUtils {
       byte[] password, long rmIdentifier) throws IOException {
     ContainerTokenIdentifier identifier =
         new ContainerTokenIdentifier(cId, host + ":" + port, user, r,
-          expiryTime, masterKeyId, rmIdentifier, Priority.newInstance(0), 0);
+            expiryTime,
+            masterKeyId, rmIdentifier);
     return newContainerToken(BuilderUtils.newNodeId(host, port), password,
         identifier);
   }

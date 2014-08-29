@@ -25,10 +25,9 @@ import org.apache.hadoop.security.token.delegation.DelegationKey;
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
 import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.security.client.RMDelegationTokenIdentifier;
-import org.apache.hadoop.yarn.server.records.Version;
-import org.apache.hadoop.yarn.server.resourcemanager.recovery.records.AMRMTokenSecretManagerState;
-import org.apache.hadoop.yarn.server.resourcemanager.recovery.records.ApplicationAttemptStateData;
-import org.apache.hadoop.yarn.server.resourcemanager.recovery.records.ApplicationStateData;
+import org.apache.hadoop.yarn.server.resourcemanager.recovery.records.RMStateVersion;
+import org.apache.hadoop.yarn.server.resourcemanager.recovery.records.impl.pb.ApplicationAttemptStateDataPBImpl;
+import org.apache.hadoop.yarn.server.resourcemanager.recovery.records.impl.pb.ApplicationStateDataPBImpl;
 
 @Unstable
 public class NullRMStateStore extends RMStateStore {
@@ -49,24 +48,19 @@ public class NullRMStateStore extends RMStateStore {
   }
 
   @Override
-  public synchronized int getAndIncrementEpoch() throws Exception {
-    return 0;
-  }
-
-  @Override
   public RMState loadState() throws Exception {
     throw new UnsupportedOperationException("Cannot load state from null store");
   }
 
   @Override
   protected void storeApplicationStateInternal(ApplicationId appId,
-      ApplicationStateData appStateData) throws Exception {
+      ApplicationStateDataPBImpl appStateData) throws Exception {
     // Do nothing
   }
 
   @Override
   protected void storeApplicationAttemptStateInternal(ApplicationAttemptId attemptId,
-      ApplicationAttemptStateData attemptStateData) throws Exception {
+      ApplicationAttemptStateDataPBImpl attemptStateData) throws Exception {
     // Do nothing
   }
 
@@ -108,13 +102,13 @@ public class NullRMStateStore extends RMStateStore {
 
   @Override
   protected void updateApplicationStateInternal(ApplicationId appId,
-      ApplicationStateData appStateData) throws Exception {
+      ApplicationStateDataPBImpl appStateData) throws Exception {
     // Do nothing 
   }
 
   @Override
   protected void updateApplicationAttemptStateInternal(ApplicationAttemptId attemptId,
-      ApplicationAttemptStateData attemptStateData) throws Exception {
+      ApplicationAttemptStateDataPBImpl attemptStateData) throws Exception {
   }
 
   @Override
@@ -123,7 +117,7 @@ public class NullRMStateStore extends RMStateStore {
   }
 
   @Override
-  protected Version loadVersion() throws Exception {
+  protected RMStateVersion loadVersion() throws Exception {
     // Do nothing
     return null;
   }
@@ -134,20 +128,9 @@ public class NullRMStateStore extends RMStateStore {
   }
 
   @Override
-  protected Version getCurrentVersion() {
+  protected RMStateVersion getCurrentVersion() {
     // Do nothing
     return null;
-  }
-
-  @Override
-  public void storeOrUpdateAMRMTokenSecretManagerState(
-      AMRMTokenSecretManagerState state, boolean isUpdate) {
-    //DO Nothing
-  }
-
-  @Override
-  public void deleteStore() throws Exception {
-    // Do nothing
   }
 
 }

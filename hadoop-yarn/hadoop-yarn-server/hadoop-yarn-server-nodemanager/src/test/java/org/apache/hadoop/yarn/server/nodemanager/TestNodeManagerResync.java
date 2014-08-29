@@ -18,9 +18,6 @@
 
 package org.apache.hadoop.yarn.server.nodemanager;
 
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -30,19 +27,17 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import junit.framework.Assert;
+
 import org.apache.hadoop.fs.FileContext;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.UnsupportedFileSystemException;
 import org.apache.hadoop.yarn.api.protocolrecords.StartContainerRequest;
 import org.apache.hadoop.yarn.api.protocolrecords.StartContainersRequest;
-import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
-import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.api.records.ContainerId;
 import org.apache.hadoop.yarn.api.records.ContainerLaunchContext;
 import org.apache.hadoop.yarn.api.records.ContainerState;
 import org.apache.hadoop.yarn.api.records.ContainerStatus;
-import org.apache.hadoop.yarn.api.records.Priority;
-import org.apache.hadoop.yarn.api.records.Resource;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.hadoop.yarn.event.Dispatcher;
 import org.apache.hadoop.yarn.exceptions.NMNotYetReadyException;
@@ -51,7 +46,6 @@ import org.apache.hadoop.yarn.exceptions.YarnRuntimeException;
 import org.apache.hadoop.yarn.factories.RecordFactory;
 import org.apache.hadoop.yarn.factory.providers.RecordFactoryProvider;
 import org.apache.hadoop.yarn.server.api.ResourceTracker;
-import org.apache.hadoop.yarn.server.api.protocolrecords.NMContainerStatus;
 import org.apache.hadoop.yarn.server.api.protocolrecords.NodeHeartbeatRequest;
 import org.apache.hadoop.yarn.server.api.protocolrecords.NodeHeartbeatResponse;
 import org.apache.hadoop.yarn.server.api.protocolrecords.RegisterNodeManagerRequest;
@@ -63,7 +57,6 @@ import org.apache.hadoop.yarn.server.nodemanager.metrics.NodeManagerMetrics;
 import org.apache.hadoop.yarn.server.security.ApplicationACLsManager;
 import org.apache.hadoop.yarn.server.utils.YarnServerBuilderUtils;
 import org.junit.After;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -84,9 +77,6 @@ public class TestNodeManagerResync {
   private CyclicBarrier syncBarrier;
   private AtomicBoolean assertionFailedInThread = new AtomicBoolean(false);
   private AtomicBoolean isNMShutdownCalled = new AtomicBoolean(false);
-  private final NodeManagerEvent resyncEvent =
-      new NodeManagerEvent(NodeManagerEventType.RESYNC);
-
 
   @Before
   public void setup() throws UnsupportedFileSystemException {
@@ -104,56 +94,34 @@ public class TestNodeManagerResync {
     assertionFailedInThread.set(false);
   }
 
+  @SuppressWarnings("unchecked")
   @Test
   public void testKillContainersOnResync() throws IOException,
       InterruptedException, YarnException {
-    TestNodeManager1 nm = new TestNodeManager1(false);
-
-    testContainerPreservationOnResyncImpl(nm, false);
-  }
-
-  @Test
-  public void testPreserveContainersOnResyncKeepingContainers() throws
-      IOException,
-      InterruptedException, YarnException {
-    TestNodeManager1 nm = new TestNodeManager1(true);
-
-    testContainerPreservationOnResyncImpl(nm, true);
-  }
-
-  @SuppressWarnings("unchecked")
-  protected void testContainerPreservationOnResyncImpl(TestNodeManager1 nm,
-      boolean isWorkPreservingRestartEnabled)
-      throws IOException, YarnException, InterruptedException {
+    NodeManager nm = new TestNodeManager1();
     YarnConfiguration conf = createNMConfig();
-    conf.setBoolean(YarnConfiguration.RM_WORK_PRESERVING_RECOVERY_ENABLED,
-        isWorkPreservingRestartEnabled);
+    nm.init(conf);
+    nm.start();
+    ContainerId cId = TestNodeManagerShutdown.createContainerId();
+    TestNodeManagerShutdown.startContainer(nm, cId, localFS, tmpDir,
+      processStartFile);
 
+    Assert.assertEquals(1, ((TestNodeManager1) nm).getNMRegistrationCount());
+    nm.getNMDispatcher().getEventHandler().
+        handle( new NodeManagerEvent(NodeManagerEventType.RESYNC));
     try {
-      nm.init(conf);
-      nm.start();
-      ContainerId cId = TestNodeManagerShutdown.createContainerId();
-      TestNodeManagerShutdown.startContainer(nm, cId, localFS, tmpDir,
-          processStartFile);
+      syncBarrier.await();
+    } catch (BrokenBarrierException e) {
+    }
+    Assert.assertEquals(2, ((TestNodeManager1) nm).getNMRegistrationCount());
+    // Only containers should be killed on resync, apps should lie around. That
+    // way local resources for apps can be used beyond resync without
+    // relocalization
+    Assert.assertTrue(nm.getNMContext().getApplications()
+      .containsKey(cId.getApplicationAttemptId().getApplicationId()));
+    Assert.assertFalse(assertionFailedInThread.get());
 
-      nm.setExistingContainerId(cId);
-      Assert.assertEquals(1, ((TestNodeManager1) nm).getNMRegistrationCount());
-      nm.getNMDispatcher().getEventHandler().handle(resyncEvent);
-      try {
-        syncBarrier.await();
-      } catch (BrokenBarrierException e) {
-      }
-      Assert.assertEquals(2, ((TestNodeManager1) nm).getNMRegistrationCount());
-      // Only containers should be killed on resync, apps should lie around.
-      // That way local resources for apps can be used beyond resync without
-      // relocalization
-      Assert.assertTrue(nm.getNMContext().getApplications()
-          .containsKey(cId.getApplicationAttemptId().getApplicationId()));
-      Assert.assertFalse(assertionFailedInThread.get());
-    }
-    finally {
-      nm.stop();
-    }
+    nm.stop();
   }
 
   // This test tests new container requests are blocked when NM starts from
@@ -181,7 +149,7 @@ public class TestNodeManagerResync {
     Assert.assertFalse(assertionFailedInThread.get());
     nm.stop();
   }
-
+  
   @SuppressWarnings("unchecked")
   @Test(timeout=10000)
   public void testNMshutdownWhenResyncThrowException() throws IOException,
@@ -193,7 +161,7 @@ public class TestNodeManagerResync {
     Assert.assertEquals(1, ((TestNodeManager3) nm).getNMRegistrationCount());
     nm.getNMDispatcher().getEventHandler()
         .handle(new NodeManagerEvent(NodeManagerEventType.RESYNC));
-
+    
     synchronized (isNMShutdownCalled) {
       while (isNMShutdownCalled.get() == false) {
         try {
@@ -202,7 +170,7 @@ public class TestNodeManagerResync {
         }
       }
     }
-
+    
     Assert.assertTrue("NM shutdown not called.",isNMShutdownCalled.get());
     nm.stop();
   }
@@ -217,9 +185,6 @@ public class TestNodeManagerResync {
         TestNodeStatusUpdater.createContainerStatus(2, ContainerState.COMPLETE);
     final Container container =
         TestNodeStatusUpdater.getMockContainer(testCompleteContainer);
-    NMContainerStatus report =
-        createNMContainerStatus(2, ContainerState.COMPLETE);
-    when(container.getNMContainerStatus()).thenReturn(report);
     NodeManager nm = new NodeManager() {
       int registerCount = 0;
 
@@ -238,7 +203,7 @@ public class TestNodeManagerResync {
                 if (registerCount == 0) {
                   // first register, no containers info.
                   try {
-                    Assert.assertEquals(0, request.getNMContainerStatuses()
+                    Assert.assertEquals(0, request.getContainerStatuses()
                       .size());
                   } catch (AssertionError error) {
                     error.printStackTrace();
@@ -249,8 +214,8 @@ public class TestNodeManagerResync {
                     testCompleteContainer.getContainerId(), container);
                 } else {
                   // second register contains the completed container info.
-                  List<NMContainerStatus> statuses =
-                      request.getNMContainerStatuses();
+                  List<ContainerStatus> statuses =
+                      request.getContainerStatuses();
                   try {
                     Assert.assertEquals(1, statuses.size());
                     Assert.assertEquals(testCompleteContainer.getContainerId(),
@@ -337,16 +302,6 @@ public class TestNodeManagerResync {
   class TestNodeManager1 extends NodeManager {
 
     private int registrationCount = 0;
-    private boolean containersShouldBePreserved;
-    private ContainerId existingCid;
-
-    public TestNodeManager1(boolean containersShouldBePreserved) {
-      this.containersShouldBePreserved = containersShouldBePreserved;
-    }
-
-    public void setExistingContainerId(ContainerId cId) {
-      existingCid = cId;
-    }
 
     @Override
     protected NodeStatusUpdater createNodeStatusUpdater(Context context,
@@ -378,23 +333,10 @@ public class TestNodeManagerResync {
         .containermanager.container.Container> containers =
             getNMContext().getContainers();
         try {
-          try {
-            if (containersShouldBePreserved) {
-              Assert.assertFalse(containers.isEmpty());
-              Assert.assertTrue(containers.containsKey(existingCid));
-            } else {
-              // ensure that containers are empty before restart nodeStatusUpdater
-              Assert.assertTrue(containers.isEmpty());
-            }
-            super.rebootNodeStatusUpdaterAndRegisterWithRM();
-          }
-          catch (AssertionError ae) {
-            ae.printStackTrace();
-            assertionFailedInThread.set(true);
-          }
-          finally {
-            syncBarrier.await();
-          }
+          // ensure that containers are empty before restart nodeStatusUpdater
+          Assert.assertTrue(containers.isEmpty());
+          super.rebootNodeStatusUpdaterAndRegisterWithRM();
+          syncBarrier.await();
         } catch (InterruptedException e) {
         } catch (BrokenBarrierException e) {
         } catch (AssertionError ae) {
@@ -568,17 +510,4 @@ public class TestNodeManagerResync {
         }
       }
     }}
-
-  public static NMContainerStatus createNMContainerStatus(int id,
-      ContainerState containerState) {
-    ApplicationId applicationId = ApplicationId.newInstance(0, 1);
-    ApplicationAttemptId applicationAttemptId =
-        ApplicationAttemptId.newInstance(applicationId, 1);
-    ContainerId containerId = ContainerId.newInstance(applicationAttemptId, id);
-    NMContainerStatus containerReport =
-        NMContainerStatus.newInstance(containerId, containerState,
-          Resource.newInstance(1024, 1), "recover container", 0,
-          Priority.newInstance(10), 0);
-    return containerReport;
-  }
 }

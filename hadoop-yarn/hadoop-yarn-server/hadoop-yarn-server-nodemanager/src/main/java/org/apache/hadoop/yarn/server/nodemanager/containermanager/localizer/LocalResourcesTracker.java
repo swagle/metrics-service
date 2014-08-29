@@ -18,11 +18,14 @@
 
 package org.apache.hadoop.yarn.server.nodemanager.containermanager.localizer;
 
+import org.apache.hadoop.classification.InterfaceAudience.Private;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.yarn.api.records.LocalResourceVisibility;
 import org.apache.hadoop.yarn.event.EventHandler;
 import org.apache.hadoop.yarn.server.nodemanager.DeletionService;
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.localizer.event.ResourceEvent;
+
+import com.google.common.annotations.VisibleForTesting;
 
 /**
  * Component tracking resources all of the same {@link LocalResourceVisibility}
@@ -31,11 +34,18 @@ import org.apache.hadoop.yarn.server.nodemanager.containermanager.localizer.even
 interface LocalResourcesTracker
     extends EventHandler<ResourceEvent>, Iterable<LocalizedResource> {
 
+  // TODO: Not used at all!!
+  boolean contains(LocalResourceRequest resource);
+
   boolean remove(LocalizedResource req, DeletionService delService);
 
   Path getPathForLocalization(LocalResourceRequest req, Path localDirPath);
 
   String getUser();
 
+  long nextUniqueNumber();
+  
+  @VisibleForTesting
+  @Private
   LocalizedResource getLocalizedResource(LocalResourceRequest request);
 }

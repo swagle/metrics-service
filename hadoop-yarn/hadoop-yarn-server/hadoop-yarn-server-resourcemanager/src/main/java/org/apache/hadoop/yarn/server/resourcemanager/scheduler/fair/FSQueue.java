@@ -119,9 +119,9 @@ public abstract class FSQueue extends Schedulable implements Queue {
     // TODO: we might change these queue metrics around a little bit
     // to match the semantics of the fair scheduler.
     queueInfo.setCapacity((float) getFairShare().getMemory() /
-        scheduler.getClusterResource().getMemory());
+        scheduler.getClusterCapacity().getMemory());
     queueInfo.setCapacity((float) getResourceUsage().getMemory() /
-        scheduler.getClusterResource().getMemory());
+        scheduler.getClusterCapacity().getMemory());
     
     ArrayList<QueueInfo> childQueueInfos = new ArrayList<QueueInfo>();
     if (includeChildQueues) {

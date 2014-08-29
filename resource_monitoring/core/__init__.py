@@ -21,7 +21,12 @@ limitations under the License.
 from resource_monitoring.core import *
 import os, sys
 path = os.path.abspath(__file__)
-sys.path.append(os.path.join(os.path.dirname(path), "psutil/build"))
+path = os.path.join(os.path.dirname(os.path.dirname(path)), "psutil/build/")
+
+for dir in os.walk(path).next()[1]:
+  if 'lib' in dir:
+    sys.path.append(os.path.join(path, dir))
+
 try:
   import psutil
 except ImportError:

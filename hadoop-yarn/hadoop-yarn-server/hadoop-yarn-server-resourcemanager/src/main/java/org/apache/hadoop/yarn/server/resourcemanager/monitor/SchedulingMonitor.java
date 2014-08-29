@@ -21,8 +21,6 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.service.AbstractService;
-import org.apache.hadoop.yarn.server.resourcemanager.RMContext;
-import org.apache.hadoop.yarn.server.resourcemanager.scheduler.PreemptableResourceScheduler;
 
 import com.google.common.annotations.VisibleForTesting;
 
@@ -36,29 +34,18 @@ public class SchedulingMonitor extends AbstractService {
   private Thread checkerThread;
   private volatile boolean stopped;
   private long monitorInterval;
-  private RMContext rmContext;
 
-  public SchedulingMonitor(RMContext rmContext,
-      SchedulingEditPolicy scheduleEditPolicy) {
+  public SchedulingMonitor(SchedulingEditPolicy scheduleEditPolicy) {
     super("SchedulingMonitor (" + scheduleEditPolicy.getPolicyName() + ")");
     this.scheduleEditPolicy = scheduleEditPolicy;
-    this.rmContext = rmContext;
+    this.monitorInterval = scheduleEditPolicy.getMonitoringInterval();
   }
 
   public long getMonitorInterval() {
     return monitorInterval;
   }
-  
-  @VisibleForTesting
-  public synchronized SchedulingEditPolicy getSchedulingEditPolicy() {
-    return scheduleEditPolicy;
-  }
 
-  @SuppressWarnings("unchecked")
   public void serviceInit(Configuration conf) throws Exception {
-    scheduleEditPolicy.init(conf, rmContext.getDispatcher().getEventHandler(),
-        (PreemptableResourceScheduler) rmContext.getScheduler());
-    this.monitorInterval = scheduleEditPolicy.getMonitoringInterval();
     super.serviceInit(conf);
   }
 

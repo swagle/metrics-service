@@ -12,7 +12,6 @@
 #   limitations under the License.
 #
 org.apache.hadoop.yarn.security.client.ClientRMSecurityInfo
-org.apache.hadoop.yarn.security.client.ClientTimelineSecurityInfo
 org.apache.hadoop.yarn.security.ContainerManagerSecurityInfo
 org.apache.hadoop.yarn.security.SchedulerSecurityInfo
 org.apache.hadoop.yarn.security.admin.AdminSecurityInfo

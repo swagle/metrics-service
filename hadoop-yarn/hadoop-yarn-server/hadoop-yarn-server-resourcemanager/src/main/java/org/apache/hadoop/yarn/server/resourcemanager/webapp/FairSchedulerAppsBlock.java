@@ -25,8 +25,6 @@ import static org.apache.hadoop.yarn.webapp.view.JQueryUI.C_PROGRESSBAR_VALUE;
 
 import java.util.Collection;
 import java.util.HashSet;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 import org.apache.commons.lang.StringEscapeUtils;
@@ -37,7 +35,6 @@ import org.apache.hadoop.yarn.api.records.YarnApplicationState;
 import org.apache.hadoop.yarn.server.resourcemanager.RMContext;
 import org.apache.hadoop.yarn.server.resourcemanager.ResourceManager;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMApp;
-import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMAppState;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.fair.FairScheduler;
 import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.AppInfo;
 import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.FairSchedulerInfo;
@@ -63,14 +60,7 @@ public class FairSchedulerAppsBlock extends HtmlBlock {
     super(ctx);
     FairScheduler scheduler = (FairScheduler) rm.getResourceScheduler();
     fsinfo = new FairSchedulerInfo(scheduler);
-    apps = new ConcurrentHashMap<ApplicationId, RMApp>();
-    for (Map.Entry<ApplicationId, RMApp> entry : rmContext.getRMApps().entrySet()) {
-      if (!(RMAppState.NEW.equals(entry.getValue().getState())
-          || RMAppState.NEW_SAVING.equals(entry.getValue().getState())
-          || RMAppState.SUBMITTED.equals(entry.getValue().getState()))) {
-        apps.put(entry.getKey(), entry.getValue());
-      }
-    }
+    apps = rmContext.getRMApps();
     this.conf = conf;
   }
   
@@ -82,7 +72,6 @@ public class FairSchedulerAppsBlock extends HtmlBlock {
             th(".id", "ID").
             th(".user", "User").
             th(".name", "Name").
-            th(".type", "Application Type").
             th(".queue", "Queue").
             th(".fairshare", "Fair Share").
             th(".starttime", "StartTime").
@@ -103,7 +92,7 @@ public class FairSchedulerAppsBlock extends HtmlBlock {
     }
     StringBuilder appsTableData = new StringBuilder("[\n");
     for (RMApp app : apps.values()) {
-      if (reqAppStates != null && !reqAppStates.contains(app.createApplicationState())) {
+      if (reqAppStates != null && !reqAppStates.contains(app.getState())) {
         continue;
       }
       AppInfo appInfo = new AppInfo(app, true, WebAppUtils.getHttpSchemePrefix(conf));
@@ -118,8 +107,6 @@ public class FairSchedulerAppsBlock extends HtmlBlock {
         appInfo.getUser()))).append("\",\"")
       .append(StringEscapeUtils.escapeJavaScript(StringEscapeUtils.escapeHtml(
         appInfo.getName()))).append("\",\"")
-      .append(StringEscapeUtils.escapeJavaScript(StringEscapeUtils.escapeHtml(
-        appInfo.getApplicationType()))).append("\",\"")
       .append(StringEscapeUtils.escapeJavaScript(StringEscapeUtils.escapeHtml(
         appInfo.getQueue()))).append("\",\"")
       .append(fairShare).append("\",\"")

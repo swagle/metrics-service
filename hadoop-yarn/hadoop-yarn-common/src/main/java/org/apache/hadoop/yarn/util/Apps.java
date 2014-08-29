@@ -38,7 +38,7 @@ import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.exceptions.YarnRuntimeException;
 
 /**
- * Yarn internal application-related utilities
+ * Yarn application related utilities
  */
 @Private
 public class Apps {
@@ -97,17 +97,6 @@ public class Apps {
       }
     }
   }
-  
-  /**
-   * This older version of this method is kept around for compatibility
-   * because downstream frameworks like Spark and Tez have been using it.
-   * Downstream frameworks are expected to move off of it.
-   */
-  @Deprecated
-  public static void setEnvFromInputString(Map<String, String> env,
-      String envString) {
-    setEnvFromInputString(env, envString, File.pathSeparator);
-  }
 
   @Public
   @Unstable
@@ -122,18 +111,6 @@ public class Apps {
     }
     environment.put(StringInterner.weakIntern(variable), 
         StringInterner.weakIntern(val));
-  }
-  
-  /**
-   * This older version of this method is kept around for compatibility
-   * because downstream frameworks like Spark and Tez have been using it.
-   * Downstream frameworks are expected to move off of it.
-   */
-  @Deprecated
-  public static void addToEnvironment(
-      Map<String, String> environment,
-      String variable, String value) {
-    addToEnvironment(environment, variable, value, File.pathSeparator);
   }
 
   public static String crossPlatformify(String var) {

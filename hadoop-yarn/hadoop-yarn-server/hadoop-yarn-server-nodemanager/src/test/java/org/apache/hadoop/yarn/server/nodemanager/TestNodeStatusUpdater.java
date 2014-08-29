@@ -82,8 +82,6 @@ import org.apache.hadoop.yarn.server.nodemanager.containermanager.application.Ap
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.container.Container;
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.container.ContainerImpl;
 import org.apache.hadoop.yarn.server.nodemanager.metrics.NodeManagerMetrics;
-import org.apache.hadoop.yarn.server.nodemanager.recovery.NMNullStateStoreService;
-import org.apache.hadoop.yarn.server.nodemanager.recovery.NMStateStoreService;
 import org.apache.hadoop.yarn.server.nodemanager.security.NMContainerTokenSecretManager;
 import org.apache.hadoop.yarn.server.nodemanager.security.NMTokenSecretManagerInNM;
 import org.apache.hadoop.yarn.server.security.ApplicationACLsManager;
@@ -263,12 +261,10 @@ public class TestNodeStatusUpdater {
         this.context.getContainers().put(secondContainerID, container);
       } else if (heartBeatID == 3) {
         // Checks on the RM end
-        Assert.assertEquals("Number of applications should have two!", 2,
+        Assert.assertEquals("Number of applications should only be one!", 1,
             appToContainers.size());
-        Assert.assertEquals("Number of container for the app-1 should be only one!",
-            1, appToContainers.get(appId1).size());
-        Assert.assertEquals("Number of container for the app-2 should be only one!",
-            1, appToContainers.get(appId2).size());
+        Assert.assertEquals("Number of container for the app should be two!",
+            2, appToContainers.get(appId2).size());
 
         // Checks on the NM end
         ConcurrentMap<ContainerId, Container> activeContainers =
@@ -932,7 +928,6 @@ public class TestNodeStatusUpdater {
       Thread.sleep(500);
     }
     Assert.assertFalse(heartBeatID < 1);
-    Assert.assertTrue(nm.getNMContext().getDecommissioned());
 
     // NM takes a while to reach the STOPPED state.
     waitCount = 0;
@@ -1161,8 +1156,7 @@ public class TestNodeStatusUpdater {
       @Override
       protected NMContext createNMContext(
           NMContainerTokenSecretManager containerTokenSecretManager,
-          NMTokenSecretManagerInNM nmTokenSecretManager,
-          NMStateStoreService store) {
+          NMTokenSecretManagerInNM nmTokenSecretManager) {
         return new MyNMContext(containerTokenSecretManager,
           nmTokenSecretManager);
       }
@@ -1271,8 +1265,7 @@ public class TestNodeStatusUpdater {
     public MyNMContext(
         NMContainerTokenSecretManager containerTokenSecretManager,
         NMTokenSecretManagerInNM nmTokenSecretManager) {
-      super(containerTokenSecretManager, nmTokenSecretManager, null, null,
-          new NMNullStateStoreService());
+      super(containerTokenSecretManager, nmTokenSecretManager, null, null);
     }
 
     @Override

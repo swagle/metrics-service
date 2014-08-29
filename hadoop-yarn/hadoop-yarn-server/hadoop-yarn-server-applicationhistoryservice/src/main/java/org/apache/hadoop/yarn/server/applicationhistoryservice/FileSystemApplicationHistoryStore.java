@@ -179,7 +179,7 @@ public class FileSystemApplicationHistoryStore extends AbstractService
       LOG.info("Completed reading history information of application " + appId);
       return historyData;
     } catch (IOException e) {
-      LOG.error("Error when reading history file of application " + appId, e);
+      LOG.error("Error when reading history file of application " + appId);
       throw e;
     } finally {
       hfReader.close();
@@ -296,7 +296,7 @@ public class FileSystemApplicationHistoryStore extends AbstractService
       return historyData;
     } catch (IOException e) {
       LOG.error("Error when reading history file of application attempt"
-          + appAttemptId, e);
+          + appAttemptId);
       throw e;
     } finally {
       hfReader.close();
@@ -344,7 +344,7 @@ public class FileSystemApplicationHistoryStore extends AbstractService
           + containerId);
       return historyData;
     } catch (IOException e) {
-      LOG.error("Error when reading history file of container " + containerId, e);
+      LOG.error("Error when reading history file of container " + containerId);
       throw e;
     } finally {
       hfReader.close();
@@ -420,7 +420,7 @@ public class FileSystemApplicationHistoryStore extends AbstractService
             + appStart.getApplicationId());
       } catch (IOException e) {
         LOG.error("Error when openning history file of application "
-            + appStart.getApplicationId(), e);
+            + appStart.getApplicationId());
         throw e;
       }
       outstandingWriters.put(appStart.getApplicationId(), hfWriter);
@@ -437,7 +437,7 @@ public class FileSystemApplicationHistoryStore extends AbstractService
           + appStart.getApplicationId() + " is written");
     } catch (IOException e) {
       LOG.error("Error when writing start information of application "
-          + appStart.getApplicationId(), e);
+          + appStart.getApplicationId());
       throw e;
     }
   }
@@ -456,7 +456,7 @@ public class FileSystemApplicationHistoryStore extends AbstractService
           + appFinish.getApplicationId() + " is written");
     } catch (IOException e) {
       LOG.error("Error when writing finish information of application "
-          + appFinish.getApplicationId(), e);
+          + appFinish.getApplicationId());
       throw e;
     } finally {
       hfWriter.close();
@@ -480,7 +480,7 @@ public class FileSystemApplicationHistoryStore extends AbstractService
           + appAttemptStart.getApplicationAttemptId() + " is written");
     } catch (IOException e) {
       LOG.error("Error when writing start information of application attempt "
-          + appAttemptStart.getApplicationAttemptId(), e);
+          + appAttemptStart.getApplicationAttemptId());
       throw e;
     }
   }
@@ -501,7 +501,7 @@ public class FileSystemApplicationHistoryStore extends AbstractService
           + appAttemptFinish.getApplicationAttemptId() + " is written");
     } catch (IOException e) {
       LOG.error("Error when writing finish information of application attempt "
-          + appAttemptFinish.getApplicationAttemptId(), e);
+          + appAttemptFinish.getApplicationAttemptId());
       throw e;
     }
   }
@@ -521,7 +521,7 @@ public class FileSystemApplicationHistoryStore extends AbstractService
           + containerStart.getContainerId() + " is written");
     } catch (IOException e) {
       LOG.error("Error when writing start information of container "
-          + containerStart.getContainerId(), e);
+          + containerStart.getContainerId());
       throw e;
     }
   }
@@ -541,7 +541,7 @@ public class FileSystemApplicationHistoryStore extends AbstractService
           + containerFinish.getContainerId() + " is written");
     } catch (IOException e) {
       LOG.error("Error when writing finish information of container "
-          + containerFinish.getContainerId(), e);
+          + containerFinish.getContainerId());
     }
   }
 
@@ -676,10 +676,9 @@ public class FileSystemApplicationHistoryStore extends AbstractService
 
     private TFile.Reader reader;
     private TFile.Reader.Scanner scanner;
-    FSDataInputStream fsdis;
 
     public HistoryFileReader(Path historyFile) throws IOException {
-      fsdis = fs.open(historyFile);
+      FSDataInputStream fsdis = fs.open(historyFile);
       reader =
           new TFile.Reader(fsdis, fs.getFileStatus(historyFile).getLen(),
             getConfig());
@@ -708,7 +707,7 @@ public class FileSystemApplicationHistoryStore extends AbstractService
     }
 
     public void close() {
-      IOUtils.cleanup(LOG, scanner, reader, fsdis);
+      IOUtils.cleanup(LOG, scanner, reader);
     }
 
   }

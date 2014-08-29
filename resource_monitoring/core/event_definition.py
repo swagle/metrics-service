@@ -20,7 +20,6 @@ limitations under the License.
 
 import logging
 
-COLLECTOR_URL = "http://{0}/ws/v1/timeline/metrics"
 DEFAULT_COLLECT_INTERVAL = 10
 
 logger = logging.getLogger()
@@ -39,10 +38,9 @@ class Event:
 class EmmitEvent(Event):
 
   def __init__(self, application_metric_map, config):
-    super(EmmitEvent, self).__init__()
+    Event.__init__(self)
     self.collector_address = config.get_server_address()
     self.application_metric_map = application_metric_map
-    self.collector_url = COLLECTOR_URL.format(self.collector_address)
 
   def get_emmit_payload(self):
     return self.application_metric_map.flatten()
@@ -51,14 +49,15 @@ class EmmitEvent(Event):
 class HostMetricCollectEvent(Event):
 
   def __init__(self, group_config, group_name):
-    super(HostMetricCollectEvent, self).__init__()
+    Event.__init__(self)
     self.group_config = group_config
     self.group_name = group_name
     try:
       self.group_interval = group_config['collect_every']
       self.metrics = group_config['metrics']
     except KeyError, ex:
-      logger.warn('Unable to create event from metric group. %s' % group_config)
+      logger.warn('Unable to create event from metric group. {0}'.format(
+        group_config))
       raise ex
 
   def get_metric_value_thresholds(self):
@@ -68,7 +67,7 @@ class HostMetricCollectEvent(Event):
       try:
         metric_value_thresholds[metric['name']] = metric['value_threshold']
       except:
-        logger.warn('Error parsing metric configuration. %s' % metric)
+        logger.warn('Error parsing metric configuration. {0}'.format(metric))
     pass
 
     return metric_value_thresholds

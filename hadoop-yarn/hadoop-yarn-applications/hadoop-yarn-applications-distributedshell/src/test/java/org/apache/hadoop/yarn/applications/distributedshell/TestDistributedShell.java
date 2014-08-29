@@ -31,7 +31,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import org.junit.Assert;
+import junit.framework.Assert;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -73,7 +73,6 @@ public class TestDistributedShell {
     conf.setClass(YarnConfiguration.RM_SCHEDULER, 
         FifoScheduler.class, ResourceScheduler.class);
     conf.set("yarn.log.dir", "target");
-    conf.setBoolean(YarnConfiguration.TIMELINE_SERVICE_ENABLED, true);
     if (yarnCluster == null) {
       yarnCluster = new MiniYARNCluster(
         TestDistributedShell.class.getSimpleName(), 1, 1, 1, 1, true);
@@ -220,7 +219,7 @@ public class TestDistributedShell {
         "--num_containers",
         "1",
         "--shell_command",
-        "sleep 8",
+        Shell.WINDOWS ? "timeout 8" : "sleep 8",
         "--master_memory",
         "512",
         "--container_memory",

@@ -43,11 +43,10 @@ import org.junit.Test;
 public class TestMoveApplication {
   private ResourceManager resourceManager = null;
   private static boolean failMove;
-  private Configuration conf;
-
+  
   @Before
   public void setUp() throws Exception {
-    conf = new YarnConfiguration();
+    Configuration conf = new YarnConfiguration();
     conf.setClass(YarnConfiguration.RM_SCHEDULER, FifoSchedulerWithMove.class,
         FifoSchedulerWithMove.class);
     conf.set(YarnConfiguration.YARN_ADMIN_ACL, " ");
@@ -72,13 +71,6 @@ public class TestMoveApplication {
     // Submit application
     Application application = new Application("user1", resourceManager);
     application.submit();
-
-    // Wait for app to be accepted
-    RMApp app = resourceManager.rmContext.getRMApps()
-            .get(application.getApplicationId());
-    while (app.getState() != RMAppState.ACCEPTED) {
-      Thread.sleep(100);
-    }
 
     ClientRMService clientRMService = resourceManager.getClientRMService();
     try {
@@ -120,23 +112,28 @@ public class TestMoveApplication {
     }
   }
   
-  @Test (timeout = 10000)
-      public
-      void testMoveSuccessful() throws Exception {
-    MockRM rm1 = new MockRM(conf);
-    rm1.start();
-    RMApp app = rm1.submitApp(1024);
-    ClientRMService clientRMService = rm1.getClientRMService();
+  @Test (timeout = 5000)
+  public void testMoveSuccessful() throws Exception {
+    // Submit application
+    Application application = new Application("user1", resourceManager);
+    ApplicationId appId = application.getApplicationId();
+    application.submit();
+    
+    // Wait for app to be accepted
+    RMApp app = resourceManager.rmContext.getRMApps().get(appId);
+    while (app.getState() != RMAppState.ACCEPTED) {
+      Thread.sleep(100);
+    }
+
+    ClientRMService clientRMService = resourceManager.getClientRMService();
     // FIFO scheduler does not support moves
-    clientRMService
-      .moveApplicationAcrossQueues(MoveApplicationAcrossQueuesRequest
-        .newInstance(app.getApplicationId(), "newqueue"));
-
-    RMApp rmApp = rm1.getRMContext().getRMApps().get(app.getApplicationId());
+    clientRMService.moveApplicationAcrossQueues(
+        MoveApplicationAcrossQueuesRequest.newInstance(appId, "newqueue"));
+    
+    RMApp rmApp = resourceManager.getRMContext().getRMApps().get(appId);
     assertEquals("newqueue", rmApp.getQueue());
-    rm1.stop();
   }
-
+  
   @Test
   public void testMoveRejectedByPermissions() throws Exception {
     failMove = true;

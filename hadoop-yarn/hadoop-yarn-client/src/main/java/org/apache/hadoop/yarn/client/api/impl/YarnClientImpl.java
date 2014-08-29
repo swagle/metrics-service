@@ -19,7 +19,6 @@
 package org.apache.hadoop.yarn.client.api.impl;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -30,13 +29,8 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience.Private;
 import org.apache.hadoop.classification.InterfaceStability.Unstable;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.io.DataInputByteBuffer;
-import org.apache.hadoop.io.DataOutputBuffer;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.ipc.RPC;
-import org.apache.hadoop.security.Credentials;
-import org.apache.hadoop.security.UserGroupInformation;
-import org.apache.hadoop.security.token.TokenIdentifier;
 import org.apache.hadoop.yarn.api.ApplicationClientProtocol;
 import org.apache.hadoop.yarn.api.protocolrecords.GetApplicationAttemptReportRequest;
 import org.apache.hadoop.yarn.api.protocolrecords.GetApplicationAttemptReportResponse;
@@ -70,7 +64,6 @@ import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.api.records.ApplicationReport;
 import org.apache.hadoop.yarn.api.records.ApplicationSubmissionContext;
 import org.apache.hadoop.yarn.api.records.ContainerId;
-import org.apache.hadoop.yarn.api.records.ContainerLaunchContext;
 import org.apache.hadoop.yarn.api.records.ContainerReport;
 import org.apache.hadoop.yarn.api.records.NodeReport;
 import org.apache.hadoop.yarn.api.records.NodeState;
@@ -81,7 +74,6 @@ import org.apache.hadoop.yarn.api.records.YarnApplicationState;
 import org.apache.hadoop.yarn.api.records.YarnClusterMetrics;
 import org.apache.hadoop.yarn.client.ClientRMProxy;
 import org.apache.hadoop.yarn.client.api.AHSClient;
-import org.apache.hadoop.yarn.client.api.TimelineClient;
 import org.apache.hadoop.yarn.client.api.YarnClient;
 import org.apache.hadoop.yarn.client.api.YarnClientApplication;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
@@ -90,10 +82,8 @@ import org.apache.hadoop.yarn.exceptions.ApplicationNotFoundException;
 import org.apache.hadoop.yarn.exceptions.YarnException;
 import org.apache.hadoop.yarn.exceptions.YarnRuntimeException;
 import org.apache.hadoop.yarn.security.AMRMTokenIdentifier;
-import org.apache.hadoop.yarn.security.client.TimelineDelegationTokenIdentifier;
 import org.apache.hadoop.yarn.util.ConverterUtils;
 import org.apache.hadoop.yarn.util.Records;
-import org.apache.hadoop.yarn.util.timeline.TimelineUtils;
 
 import com.google.common.annotations.VisibleForTesting;
 
@@ -107,11 +97,8 @@ public class YarnClientImpl extends YarnClient {
   protected long submitPollIntervalMillis;
   private long asyncApiPollIntervalMillis;
   private long asyncApiPollTimeoutMillis;
-  private AHSClient historyClient;
+  protected AHSClient historyClient;
   private boolean historyServiceEnabled;
-  protected TimelineClient timelineClient;
-  protected Text timelineService;
-  protected boolean timelineServiceEnabled;
 
   private static final String ROOT = "root";
 
@@ -139,17 +126,10 @@ public class YarnClientImpl extends YarnClient {
     if (conf.getBoolean(YarnConfiguration.APPLICATION_HISTORY_ENABLED,
       YarnConfiguration.DEFAULT_APPLICATION_HISTORY_ENABLED)) {
       historyServiceEnabled = true;
-      historyClient = AHSClient.createAHSClient();
-      historyClient.init(conf);
+      historyClient = AHSClientImpl.createAHSClient();
+      historyClient.init(getConfig());
     }
 
-    if (conf.getBoolean(YarnConfiguration.TIMELINE_SERVICE_ENABLED,
-        YarnConfiguration.DEFAULT_TIMELINE_SERVICE_ENABLED)) {
-      timelineServiceEnabled = true;
-      timelineClient = TimelineClient.createTimelineClient();
-      timelineClient.init(conf);
-      timelineService = TimelineUtils.buildTimelineTokenService(conf);
-    }
     super.serviceInit(conf);
   }
 
@@ -160,9 +140,6 @@ public class YarnClientImpl extends YarnClient {
           ApplicationClientProtocol.class);
       if (historyServiceEnabled) {
         historyClient.start();
-      }
-      if (timelineServiceEnabled) {
-        timelineClient.start();
       }
     } catch (IOException e) {
       throw new YarnRuntimeException(e);
@@ -177,9 +154,6 @@ public class YarnClientImpl extends YarnClient {
     }
     if (historyServiceEnabled) {
       historyClient.stop();
-    }
-    if (timelineServiceEnabled) {
-      timelineClient.stop();
     }
     super.serviceStop();
   }
@@ -214,12 +188,6 @@ public class YarnClientImpl extends YarnClient {
     SubmitApplicationRequest request =
         Records.newRecord(SubmitApplicationRequest.class);
     request.setApplicationSubmissionContext(appContext);
-
-    // Automatically add the timeline DT into the CLC
-    // Only when the security and the timeline service are both enabled
-    if (isSecurityEnabled() && timelineServiceEnabled) {
-      addTimelineDelegationToken(appContext.getAMContainerSpec());
-    }
 
     //TODO: YARN-1763:Handle RM failovers during the submitApplication call.
     rmClient.submitApplication(request);
@@ -268,48 +236,6 @@ public class YarnClientImpl extends YarnClient {
     }
 
     return applicationId;
-  }
-
-  private void addTimelineDelegationToken(
-      ContainerLaunchContext clc) throws YarnException, IOException {
-    org.apache.hadoop.security.token.Token<TimelineDelegationTokenIdentifier> timelineDelegationToken =
-        timelineClient.getDelegationToken(
-            UserGroupInformation.getCurrentUser().getUserName());
-    if (timelineDelegationToken == null) {
-      return;
-    }
-    Credentials credentials = new Credentials();
-    DataInputByteBuffer dibb = new DataInputByteBuffer();
-    ByteBuffer tokens = clc.getTokens();
-    if (tokens != null) {
-      dibb.reset(tokens);
-      credentials.readTokenStorageStream(dibb);
-      tokens.rewind();
-    }
-    // If the timeline delegation token is already in the CLC, no need to add
-    // one more
-    for (org.apache.hadoop.security.token.Token<? extends TokenIdentifier> token : credentials
-        .getAllTokens()) {
-      TokenIdentifier tokenIdentifier = token.decodeIdentifier();
-      if (tokenIdentifier instanceof TimelineDelegationTokenIdentifier) {
-        return;
-      }
-    }
-    credentials.addToken(timelineService, timelineDelegationToken);
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("Add timline delegation token into credentials: "
-          + timelineDelegationToken);
-    }
-    DataOutputBuffer dob = new DataOutputBuffer();
-    credentials.writeTokenStorageToStream(dob);
-    tokens = ByteBuffer.wrap(dob.getData(), 0, dob.getLength());
-    clc.setTokens(tokens);
-  }
-
-  @Private
-  @VisibleForTesting
-  protected boolean isSecurityEnabled() {
-    return UserGroupInformation.isSecurityEnabled();
   }
 
   @Override

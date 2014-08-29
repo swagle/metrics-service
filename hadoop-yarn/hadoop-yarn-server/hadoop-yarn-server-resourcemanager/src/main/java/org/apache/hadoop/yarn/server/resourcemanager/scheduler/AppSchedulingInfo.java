@@ -39,8 +39,6 @@ import org.apache.hadoop.yarn.api.records.Priority;
 import org.apache.hadoop.yarn.api.records.Resource;
 import org.apache.hadoop.yarn.api.records.ResourceRequest;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttemptState;
-import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.RMContainer;
-import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.RMContainerState;
 import org.apache.hadoop.yarn.util.resource.Resources;
 
 /**
@@ -57,10 +55,7 @@ public class AppSchedulingInfo {
   private final String queueName;
   Queue queue;
   final String user;
-  // TODO making containerIdCounter long
-  private final AtomicInteger containerIdCounter;
-  private final int EPOCH_BIT_MASK = 0x3ff;
-  private final int EPOCH_BIT_SHIFT = 22;
+  private final AtomicInteger containerIdCounter = new AtomicInteger(0);
 
   final Set<Priority> priorities = new TreeSet<Priority>(
       new org.apache.hadoop.yarn.server.resourcemanager.resource.Priority.Comparator());
@@ -73,19 +68,15 @@ public class AppSchedulingInfo {
   
   /* Allocated by scheduler */
   boolean pending = true; // for app metrics
-  
- 
+
   public AppSchedulingInfo(ApplicationAttemptId appAttemptId,
-      String user, Queue queue, ActiveUsersManager activeUsersManager,
-      int epoch) {
+      String user, Queue queue, ActiveUsersManager activeUsersManager) {
     this.applicationAttemptId = appAttemptId;
     this.applicationId = appAttemptId.getApplicationId();
     this.queue = queue;
     this.queueName = queue.getQueueName();
     this.user = user;
     this.activeUsersManager = activeUsersManager;
-    this.containerIdCounter = new AtomicInteger(
-        (epoch & EPOCH_BIT_MASK) << EPOCH_BIT_SHIFT);
   }
 
   public ApplicationId getApplicationId() {
@@ -127,10 +118,9 @@ public class AppSchedulingInfo {
    * by the application.
    *
    * @param requests resources to be acquired
-   * @param recoverPreemptedRequest recover Resource Request on preemption
    */
   synchronized public void updateResourceRequests(
-      List<ResourceRequest> requests, boolean recoverPreemptedRequest) {
+      List<ResourceRequest> requests) {
     QueueMetrics metrics = queue.getMetrics();
     
     // Update resource requests
@@ -164,13 +154,8 @@ public class AppSchedulingInfo {
         asks = new HashMap<String, ResourceRequest>();
         this.requests.put(priority, asks);
         this.priorities.add(priority);
-      }
-      lastRequest = asks.get(resourceName);
-
-      if (recoverPreemptedRequest && lastRequest != null) {
-        // Increment the number of containers to 1, as it is recovering a
-        // single container.
-        request.setNumContainers(lastRequest.getNumContainers() + 1);
+      } else if (updatePendingResources) {
+        lastRequest = asks.get(resourceName);
       }
 
       asks.put(resourceName, request);
@@ -260,16 +245,14 @@ public class AppSchedulingInfo {
    * @param container
    *          the containers allocated.
    */
-  synchronized public List<ResourceRequest> allocate(NodeType type,
-      SchedulerNode node, Priority priority, ResourceRequest request,
-      Container container) {
-    List<ResourceRequest> resourceRequests = new ArrayList<ResourceRequest>();
+  synchronized public void allocate(NodeType type, SchedulerNode node,
+      Priority priority, ResourceRequest request, Container container) {
     if (type == NodeType.NODE_LOCAL) {
-      allocateNodeLocal(node, priority, request, container, resourceRequests);
+      allocateNodeLocal(node, priority, request, container);
     } else if (type == NodeType.RACK_LOCAL) {
-      allocateRackLocal(node, priority, request, container, resourceRequests);
+      allocateRackLocal(node, priority, request, container);
     } else {
-      allocateOffSwitch(node, priority, request, container, resourceRequests);
+      allocateOffSwitch(node, priority, request, container);
     }
     QueueMetrics metrics = queue.getMetrics();
     if (pending) {
@@ -287,7 +270,6 @@ public class AppSchedulingInfo {
           + " resource=" + request.getCapability());
     }
     metrics.allocateResources(user, 1, request.getCapability(), true);
-    return resourceRequests;
   }
 
   /**
@@ -297,9 +279,9 @@ public class AppSchedulingInfo {
    * @param allocatedContainers
    *          resources allocated to the application
    */
-  synchronized private void allocateNodeLocal(SchedulerNode node,
-      Priority priority, ResourceRequest nodeLocalRequest, Container container,
-      List<ResourceRequest> resourceRequests) {
+  synchronized private void allocateNodeLocal( 
+      SchedulerNode node, Priority priority, 
+      ResourceRequest nodeLocalRequest, Container container) {
     // Update future requirements
     nodeLocalRequest.setNumContainers(nodeLocalRequest.getNumContainers() - 1);
     if (nodeLocalRequest.getNumContainers() == 0) {
@@ -313,14 +295,7 @@ public class AppSchedulingInfo {
       this.requests.get(priority).remove(node.getRackName());
     }
 
-    ResourceRequest offRackRequest = requests.get(priority).get(
-        ResourceRequest.ANY);
-    decrementOutstanding(offRackRequest);
-
-    // Update cloned NodeLocal, RackLocal and OffRack requests for recovery
-    resourceRequests.add(cloneResourceRequest(nodeLocalRequest));
-    resourceRequests.add(cloneResourceRequest(rackLocalRequest));
-    resourceRequests.add(cloneResourceRequest(offRackRequest));
+    decrementOutstanding(requests.get(priority).get(ResourceRequest.ANY));
   }
 
   /**
@@ -330,22 +305,16 @@ public class AppSchedulingInfo {
    * @param allocatedContainers
    *          resources allocated to the application
    */
-  synchronized private void allocateRackLocal(SchedulerNode node,
-      Priority priority, ResourceRequest rackLocalRequest, Container container,
-      List<ResourceRequest> resourceRequests) {
+  synchronized private void allocateRackLocal(
+      SchedulerNode node, Priority priority,
+      ResourceRequest rackLocalRequest, Container container) {
     // Update future requirements
     rackLocalRequest.setNumContainers(rackLocalRequest.getNumContainers() - 1);
     if (rackLocalRequest.getNumContainers() == 0) {
       this.requests.get(priority).remove(node.getRackName());
     }
 
-    ResourceRequest offRackRequest = requests.get(priority).get(
-        ResourceRequest.ANY);
-    decrementOutstanding(offRackRequest);
-
-    // Update cloned RackLocal and OffRack requests for recovery
-    resourceRequests.add(cloneResourceRequest(rackLocalRequest));
-    resourceRequests.add(cloneResourceRequest(offRackRequest));
+    decrementOutstanding(requests.get(priority).get(ResourceRequest.ANY));
   }
 
   /**
@@ -355,13 +324,11 @@ public class AppSchedulingInfo {
    * @param allocatedContainers
    *          resources allocated to the application
    */
-  synchronized private void allocateOffSwitch(SchedulerNode node,
-      Priority priority, ResourceRequest offSwitchRequest, Container container,
-      List<ResourceRequest> resourceRequests) {
+  synchronized private void allocateOffSwitch(
+      SchedulerNode node, Priority priority,
+      ResourceRequest offSwitchRequest, Container container) {
     // Update future requirements
     decrementOutstanding(offSwitchRequest);
-    // Update cloned OffRack requests for recovery
-    resourceRequests.add(cloneResourceRequest(offSwitchRequest));
   }
 
   synchronized private void decrementOutstanding(
@@ -441,30 +408,5 @@ public class AppSchedulingInfo {
     //    this.priorities = appInfo.getPriorities();
     //    this.requests = appInfo.getRequests();
     this.blacklist = appInfo.getBlackList();
-  }
-
-  public synchronized void recoverContainer(RMContainer rmContainer) {
-    QueueMetrics metrics = queue.getMetrics();
-    if (pending) {
-      // If there was any container to recover, the application was
-      // running from scheduler's POV.
-      pending = false;
-      metrics.runAppAttempt(applicationId, user);
-    }
-
-    // Container is completed. Skip recovering resources.
-    if (rmContainer.getState().equals(RMContainerState.COMPLETED)) {
-      return;
-    }
-
-    metrics.allocateResources(user, 1, rmContainer.getAllocatedResource(),
-      false);
-  }
-  
-  public ResourceRequest cloneResourceRequest(ResourceRequest request) {
-    ResourceRequest newRequest = ResourceRequest.newInstance(
-        request.getPriority(), request.getResourceName(),
-        request.getCapability(), 1, request.getRelaxLocality());
-    return newRequest;
   }
 }

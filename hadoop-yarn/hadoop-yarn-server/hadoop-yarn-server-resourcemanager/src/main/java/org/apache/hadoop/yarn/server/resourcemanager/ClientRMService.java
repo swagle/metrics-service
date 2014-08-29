@@ -129,7 +129,6 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.SettableFuture;
 
-
 /**
  * The client interface to the Resource Manager. This module handles all the rpc
  * interfaces to the resource manager from the client.
@@ -199,9 +198,7 @@ public class ClientRMService extends AbstractService implements
     }
     
     this.server.start();
-    clientBindAddress = conf.updateConnectAddr(YarnConfiguration.RM_BIND_HOST,
-                                               YarnConfiguration.RM_ADDRESS,
-                                               YarnConfiguration.DEFAULT_RM_ADDRESS,
+    clientBindAddress = conf.updateConnectAddr(YarnConfiguration.RM_ADDRESS,
                                                server.getListenerAddress());
     super.serviceStart();
   }
@@ -215,9 +212,7 @@ public class ClientRMService extends AbstractService implements
   }
 
   InetSocketAddress getBindAddress(Configuration conf) {
-    return conf.getSocketAddr(
-            YarnConfiguration.RM_BIND_HOST,
-            YarnConfiguration.RM_ADDRESS,
+    return conf.getSocketAddr(YarnConfiguration.RM_ADDRESS,
             YarnConfiguration.DEFAULT_RM_ADDRESS,
             YarnConfiguration.DEFAULT_RM_PORT);
   }
@@ -923,7 +918,7 @@ public class ClientRMService extends AbstractService implements
           protoToken.getIdentifier().array(), protoToken.getPassword().array(),
           new Text(protoToken.getKind()), new Text(protoToken.getService()));
 
-      String user = UserGroupInformation.getCurrentUser().getUserName();
+      String user = getRenewerForToken(token);
       rmDTSecretManager.cancelToken(token, user);
       return Records.newRecord(CancelDelegationTokenResponse.class);
     } catch (IOException e) {

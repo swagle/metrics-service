@@ -18,7 +18,7 @@
 
 package org.apache.hadoop.yarn;
 
-import org.junit.Assert;
+import junit.framework.Assert;
 
 import org.apache.hadoop.yarn.exceptions.YarnRuntimeException;
 import org.apache.hadoop.yarn.factories.RecordFactory;

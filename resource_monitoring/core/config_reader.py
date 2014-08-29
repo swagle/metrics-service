@@ -24,7 +24,7 @@ import json
 import os
 
 config = ConfigParser.RawConfigParser()
-CONFIG_FILE_PATH = "/etc/ambari-agent/conf/metric_monitor.ini"
+CONFIG_FILE_PATH = "/etc/metric-monitor/conf/metric_monitor.ini"
 METRIC_FILE_PATH = "/etc/metric-monitor/conf/metric_groups.conf"
 
 config_content = """
@@ -87,11 +87,15 @@ class Configuration:
   def __init__(self):
     global config_content
     self.config = ConfigParser.RawConfigParser()
-    self.config.readfp(StringIO.StringIO(config_content))
+    if os.path.exists(CONFIG_FILE_PATH):
+      self.config.read(CONFIG_FILE_PATH)
+    else:
+      self.config.readfp(StringIO.StringIO(config_content))
+    pass
     if os.path.exists(METRIC_FILE_PATH):
       self.metric_groups = json.load(open(METRIC_FILE_PATH))
     else:
-      print 'No metric configs found at %s' % METRIC_FILE_PATH
+      print 'No metric configs found at {0}'.format(METRIC_FILE_PATH)
     pass
 
   def getConfig(self):

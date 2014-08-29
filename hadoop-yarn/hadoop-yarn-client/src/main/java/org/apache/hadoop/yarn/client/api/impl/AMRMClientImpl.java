@@ -47,9 +47,7 @@ import org.apache.hadoop.yarn.api.protocolrecords.FinishApplicationMasterRequest
 import org.apache.hadoop.yarn.api.protocolrecords.FinishApplicationMasterResponse;
 import org.apache.hadoop.yarn.api.protocolrecords.RegisterApplicationMasterRequest;
 import org.apache.hadoop.yarn.api.protocolrecords.RegisterApplicationMasterResponse;
-import org.apache.hadoop.yarn.api.records.AMCommand;
 import org.apache.hadoop.yarn.api.records.ContainerId;
-import org.apache.hadoop.yarn.api.records.ContainerStatus;
 import org.apache.hadoop.yarn.api.records.FinalApplicationStatus;
 import org.apache.hadoop.yarn.api.records.NMToken;
 import org.apache.hadoop.yarn.api.records.Priority;
@@ -61,7 +59,6 @@ import org.apache.hadoop.yarn.client.api.AMRMClient;
 import org.apache.hadoop.yarn.client.api.AMRMClient.ContainerRequest;
 import org.apache.hadoop.yarn.client.api.InvalidContainerRequestException;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
-import org.apache.hadoop.yarn.exceptions.ApplicationMasterNotRegisteredException;
 import org.apache.hadoop.yarn.exceptions.YarnException;
 import org.apache.hadoop.yarn.exceptions.YarnRuntimeException;
 import org.apache.hadoop.yarn.util.RackResolver;
@@ -80,18 +77,10 @@ public class AMRMClientImpl<T extends ContainerRequest> extends AMRMClient<T> {
   
   private int lastResponseId = 0;
 
-  protected String appHostName;
-  protected int appHostPort;
-  protected String appTrackingUrl;
-
   protected ApplicationMasterProtocol rmClient;
   protected Resource clusterAvailableResources;
   protected int clusterNodeCount;
   
-  // blacklistedNodes is required for keeping history of blacklisted nodes that
-  // are sent to RM. On RESYNC command from RM, blacklistedNodes are used to get
-  // current blacklisted nodes and send back to RM.
-  protected final Set<String> blacklistedNodes = new HashSet<String>();
   protected final Set<String> blacklistAdditions = new HashSet<String>();
   protected final Set<String> blacklistRemovals = new HashSet<String>();
   
@@ -161,10 +150,6 @@ public class AMRMClientImpl<T extends ContainerRequest> extends AMRMClient<T> {
   protected final Set<ResourceRequest> ask = new TreeSet<ResourceRequest>(
       new org.apache.hadoop.yarn.api.records.ResourceRequest.ResourceRequestComparator());
   protected final Set<ContainerId> release = new TreeSet<ContainerId>();
-  // pendingRelease holds history or release requests.request is removed only if
-  // RM sends completedContainer.
-  // How it different from release? --> release is for per allocate() request.
-  protected Set<ContainerId> pendingRelease = new TreeSet<ContainerId>();
   
   public AMRMClientImpl() {
     super(AMRMClientImpl.class.getName());
@@ -200,27 +185,19 @@ public class AMRMClientImpl<T extends ContainerRequest> extends AMRMClient<T> {
   public RegisterApplicationMasterResponse registerApplicationMaster(
       String appHostName, int appHostPort, String appTrackingUrl)
       throws YarnException, IOException {
-    this.appHostName = appHostName;
-    this.appHostPort = appHostPort;
-    this.appTrackingUrl = appTrackingUrl;
     Preconditions.checkArgument(appHostName != null,
         "The host name should not be null");
     Preconditions.checkArgument(appHostPort >= -1, "Port number of the host"
         + " should be any integers larger than or equal to -1");
-
-    return registerApplicationMaster();
-  }
-
-  private RegisterApplicationMasterResponse registerApplicationMaster()
-      throws YarnException, IOException {
+    // do this only once ???
     RegisterApplicationMasterRequest request =
-        RegisterApplicationMasterRequest.newInstance(this.appHostName,
-            this.appHostPort, this.appTrackingUrl);
+        RegisterApplicationMasterRequest.newInstance(appHostName, appHostPort,
+          appTrackingUrl);
     RegisterApplicationMasterResponse response =
         rmClient.registerApplicationMaster(request);
+
     synchronized (this) {
-      lastResponseId = 0;
-      if (!response.getNMTokensFromPreviousAttempts().isEmpty()) {
+      if(!response.getNMTokensFromPreviousAttempts().isEmpty()) {
         populateNMTokens(response.getNMTokensFromPreviousAttempts());
       }
     }
@@ -272,25 +249,6 @@ public class AMRMClientImpl<T extends ContainerRequest> extends AMRMClient<T> {
       }
 
       allocateResponse = rmClient.allocate(allocateRequest);
-      if (isResyncCommand(allocateResponse)) {
-        LOG.warn("ApplicationMaster is out of sync with ResourceManager,"
-            + " hence resyncing.");
-        synchronized (this) {
-          release.addAll(this.pendingRelease);
-          blacklistAdditions.addAll(this.blacklistedNodes);
-          for (Map<String, TreeMap<Resource, ResourceRequestInfo>> rr : remoteRequestsTable
-              .values()) {
-            for (Map<Resource, ResourceRequestInfo> capabalities : rr.values()) {
-              for (ResourceRequestInfo request : capabalities.values()) {
-                addResourceRequestToAsk(request.remoteRequest);
-              }
-            }
-          }
-        }
-        // re register with RM
-        registerApplicationMaster();
-        return allocate(progressIndicator);
-      }
 
       synchronized (this) {
         // update these on successful RPC
@@ -299,11 +257,6 @@ public class AMRMClientImpl<T extends ContainerRequest> extends AMRMClient<T> {
         clusterAvailableResources = allocateResponse.getAvailableResources();
         if (!allocateResponse.getNMTokens().isEmpty()) {
           populateNMTokens(allocateResponse.getNMTokens());
-        }
-        if (!pendingRelease.isEmpty()
-            && !allocateResponse.getCompletedContainersStatuses().isEmpty()) {
-          removePendingReleaseRequests(allocateResponse
-              .getCompletedContainersStatuses());
         }
       }
     } finally {
@@ -333,18 +286,6 @@ public class AMRMClientImpl<T extends ContainerRequest> extends AMRMClient<T> {
       }
     }
     return allocateResponse;
-  }
-
-  protected void removePendingReleaseRequests(
-      List<ContainerStatus> completedContainersStatuses) {
-    for (ContainerStatus containerStatus : completedContainersStatuses) {
-      pendingRelease.remove(containerStatus.getContainerId());
-    }
-  }
-
-  private boolean isResyncCommand(AllocateResponse allocateResponse) {
-    return allocateResponse.getAMCommand() != null
-        && allocateResponse.getAMCommand() == AMCommand.AM_RESYNC;
   }
 
   @Private
@@ -383,12 +324,6 @@ public class AMRMClientImpl<T extends ContainerRequest> extends AMRMClient<T> {
     } catch (InterruptedException e) {
       LOG.info("Interrupted while waiting for application"
           + " to be removed from RMStateStore");
-    } catch (ApplicationMasterNotRegisteredException e) {
-      LOG.warn("ApplicationMaster is out of sync with ResourceManager,"
-          + " hence resyncing.");
-      // re register with RM
-      registerApplicationMaster();
-      unregisterApplicationMaster(appStatus, appMessage, appTrackingUrl);
     }
   }
   
@@ -479,7 +414,6 @@ public class AMRMClientImpl<T extends ContainerRequest> extends AMRMClient<T> {
   public synchronized void releaseAssignedContainer(ContainerId containerId) {
     Preconditions.checkArgument(containerId != null,
         "ContainerId can not be null.");
-    pendingRelease.add(containerId);
     release.add(containerId);
   }
   
@@ -721,7 +655,6 @@ public class AMRMClientImpl<T extends ContainerRequest> extends AMRMClient<T> {
     
     if (blacklistAdditions != null) {
       this.blacklistAdditions.addAll(blacklistAdditions);
-      this.blacklistedNodes.addAll(blacklistAdditions);
       // if some resources are also in blacklistRemovals updated before, we 
       // should remove them here.
       this.blacklistRemovals.removeAll(blacklistAdditions);
@@ -729,7 +662,6 @@ public class AMRMClientImpl<T extends ContainerRequest> extends AMRMClient<T> {
     
     if (blacklistRemovals != null) {
       this.blacklistRemovals.addAll(blacklistRemovals);
-      this.blacklistedNodes.removeAll(blacklistRemovals);
       // if some resources are in blacklistAdditions before, we should remove
       // them here.
       this.blacklistAdditions.removeAll(blacklistRemovals);

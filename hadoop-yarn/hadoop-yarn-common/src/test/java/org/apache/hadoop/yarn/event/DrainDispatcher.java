@@ -28,7 +28,6 @@ public class DrainDispatcher extends AsyncDispatcher {
 // and similar grotesqueries
   private volatile boolean drained = false;
   private final BlockingQueue<Event> queue;
-  final Object mutex;
 
   public DrainDispatcher() {
     this(new LinkedBlockingQueue<Event>());
@@ -37,7 +36,6 @@ public class DrainDispatcher extends AsyncDispatcher {
   private DrainDispatcher(BlockingQueue<Event> eventQueue) {
     super(eventQueue);
     this.queue = eventQueue;
-    this.mutex = this;
   }
 
   /**
@@ -55,10 +53,8 @@ public class DrainDispatcher extends AsyncDispatcher {
       @Override
       public void run() {
         while (!Thread.currentThread().isInterrupted()) {
-          synchronized (mutex) {
-            // !drained if dispatch queued new events on this dispatcher
-            drained = queue.isEmpty();
-          }
+          // !drained if dispatch queued new events on this dispatcher
+          drained = queue.isEmpty();
           Event event;
           try {
             event = queue.take();
@@ -79,10 +75,8 @@ public class DrainDispatcher extends AsyncDispatcher {
     return new EventHandler() {
       @Override
       public void handle(Event event) {
-        synchronized (mutex) {
-          actual.handle(event);
-          drained = false;
-        }
+        drained = false;
+        actual.handle(event);
       }
     };
   }

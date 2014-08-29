@@ -21,7 +21,7 @@ package org.apache.hadoop.yarn.server.resourcemanager.scheduler.fair;
 import java.io.File;
 import java.io.IOException;
 
-import org.junit.Assert;
+import junit.framework.Assert;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
@@ -51,8 +51,6 @@ public class TestFairSchedulerEventLog {
     resourceManager = new ResourceManager();
     resourceManager.init(conf);
     ((AsyncDispatcher)resourceManager.getRMContext().getDispatcher()).start();
-    scheduler.init(conf);
-    scheduler.start();
     scheduler.reinitialize(conf, resourceManager.getRMContext());
   }
 
@@ -71,13 +69,7 @@ public class TestFairSchedulerEventLog {
   public void tearDown() {
     logFile.delete();
     logFile.getParentFile().delete(); // fairscheduler/
-    if (scheduler != null) {
-      scheduler.stop();
-      scheduler = null;
-    }
-    if (resourceManager != null) {
-      resourceManager.stop();
-      resourceManager = null;
-    }
+    scheduler = null;
+    resourceManager = null;
   }
 }

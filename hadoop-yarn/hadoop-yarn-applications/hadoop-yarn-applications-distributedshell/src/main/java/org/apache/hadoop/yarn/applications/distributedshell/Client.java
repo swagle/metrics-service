@@ -456,6 +456,9 @@ public class Client {
     appContext.setKeepContainersAcrossApplicationAttempts(keepContainers);
     appContext.setApplicationName(appName);
 
+    // Set up the container launch context for the application master
+    ContainerLaunchContext amContainer = Records.newRecord(ContainerLaunchContext.class);
+
     // set local resources for the application master
     // local files or archives as needed
     // In this scenario, the jar file for the application master is part of the local resources			
@@ -465,12 +468,12 @@ public class Client {
     // Copy the application master jar to the filesystem 
     // Create a local resource to point to the destination jar path 
     FileSystem fs = FileSystem.get(conf);
-    addToLocalResources(fs, appMasterJar, appMasterJarPath, appId.toString(),
+    addToLocalResources(fs, appMasterJar, appMasterJarPath, appId.getId(),
         localResources, null);
 
     // Set the log4j properties if needed 
     if (!log4jPropFile.isEmpty()) {
-      addToLocalResources(fs, log4jPropFile, log4jPath, appId.toString(),
+      addToLocalResources(fs, log4jPropFile, log4jPath, appId.getId(),
           localResources, null);
     }			
 
@@ -486,7 +489,7 @@ public class Client {
     if (!shellScriptPath.isEmpty()) {
       Path shellSrc = new Path(shellScriptPath);
       String shellPathSuffix =
-          appName + "/" + appId.toString() + "/" + SCRIPT_PATH;
+          appName + "/" + appId.getId() + "/" + SCRIPT_PATH;
       Path shellDst =
           new Path(fs.getHomeDirectory(), shellPathSuffix);
       fs.copyFromLocalFile(false, true, shellSrc, shellDst);
@@ -497,14 +500,16 @@ public class Client {
     }
 
     if (!shellCommand.isEmpty()) {
-      addToLocalResources(fs, null, shellCommandPath, appId.toString(),
+      addToLocalResources(fs, null, shellCommandPath, appId.getId(),
           localResources, shellCommand);
     }
 
     if (shellArgs.length > 0) {
-      addToLocalResources(fs, null, shellArgsPath, appId.toString(),
+      addToLocalResources(fs, null, shellArgsPath, appId.getId(),
           localResources, StringUtils.join(shellArgs, " "));
     }
+    // Set local resource info into app master container launch context
+    amContainer.setLocalResources(localResources);
 
     // Set the necessary security tokens as needed
     //amContainer.setContainerTokens(containerToken);
@@ -545,6 +550,8 @@ public class Client {
 
     env.put("CLASSPATH", classPathEnv.toString());
 
+    amContainer.setEnvironment(env);
+
     // Set the necessary command to execute the application master 
     Vector<CharSequence> vargs = new Vector<CharSequence>(30);
 
@@ -580,15 +587,14 @@ public class Client {
     LOG.info("Completed setting up app master command " + command.toString());	   
     List<String> commands = new ArrayList<String>();
     commands.add(command.toString());		
-
-    // Set up the container launch context for the application master
-    ContainerLaunchContext amContainer = ContainerLaunchContext.newInstance(
-      localResources, env, commands, null, null, null);
+    amContainer.setCommands(commands);
 
     // Set up resource type requirements
     // For now, both memory and vcores are supported, so we set memory and 
     // vcores requirements
-    Resource capability = Resource.newInstance(amMemory, amVCores);
+    Resource capability = Records.newRecord(Resource.class);
+    capability.setMemory(amMemory);
+    capability.setVirtualCores(amVCores);
     appContext.setResource(capability);
 
     // Service data is a binary blob that can be passed to the application
@@ -597,7 +603,6 @@ public class Client {
 
     // Setup security tokens
     if (UserGroupInformation.isSecurityEnabled()) {
-      // Note: Credentials class is marked as LimitedPrivate for HDFS and MapReduce
       Credentials credentials = new Credentials();
       String tokenRenewer = conf.get(YarnConfiguration.RM_PRINCIPAL);
       if (tokenRenewer == null || tokenRenewer.length() == 0) {
@@ -622,8 +627,9 @@ public class Client {
     appContext.setAMContainerSpec(amContainer);
 
     // Set the priority for the application master
+    Priority pri = Records.newRecord(Priority.class);
     // TODO - what is the range for priority? how to decide? 
-    Priority pri = Priority.newInstance(amPriority);
+    pri.setPriority(amPriority);
     appContext.setPriority(pri);
 
     // Set the queue to which this application is to be submitted in the RM
@@ -731,7 +737,7 @@ public class Client {
   }
 
   private void addToLocalResources(FileSystem fs, String fileSrcPath,
-      String fileDstPath, String appId, Map<String, LocalResource> localResources,
+      String fileDstPath, int appId, Map<String, LocalResource> localResources,
       String resources) throws IOException {
     String suffix =
         appName + "/" + appId + "/" + fileDstPath;

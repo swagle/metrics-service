@@ -27,7 +27,7 @@ import static org.mockito.Mockito.when;
 
 import java.net.ConnectException;
 
-import org.junit.Assert;
+import junit.framework.Assert;
 
 import org.apache.hadoop.yarn.api.records.timeline.TimelineEntities;
 import org.apache.hadoop.yarn.api.records.timeline.TimelineEntity;
@@ -49,9 +49,7 @@ public class TestTimelineClient {
 
   @Before
   public void setup() {
-    YarnConfiguration conf = new YarnConfiguration();
-    conf.setBoolean(YarnConfiguration.TIMELINE_SERVICE_ENABLED, true);
-    client = createTimelineClient(conf);
+    client = createTimelineClient(new YarnConfiguration());
   }
 
   @After
@@ -126,25 +124,6 @@ public class TestTimelineClient {
     } catch (YarnException e) {
       Assert.fail(
           "putEntities should already return before throwing the exception");
-    }
-  }
-
-  @Test
-  public void testPostEntitiesTimelineServiceDefaultNotEnabled()
-      throws Exception {
-    YarnConfiguration conf = new YarnConfiguration();
-    // Unset the timeline service's enabled properties.
-    // Make sure default value is pickup up
-    conf.unset(YarnConfiguration.TIMELINE_SERVICE_ENABLED);
-    TimelineClientImpl client = createTimelineClient(conf);
-    mockClientResponse(client, ClientResponse.Status.INTERNAL_SERVER_ERROR,
-        false, false);
-    try {
-      TimelinePutResponse response = client.putEntities(generateEntity());
-      Assert.assertEquals(0, response.getErrors().size());
-    } catch (YarnException e) {
-      Assert
-          .fail("putEntities should already return before throwing the exception");
     }
   }
 

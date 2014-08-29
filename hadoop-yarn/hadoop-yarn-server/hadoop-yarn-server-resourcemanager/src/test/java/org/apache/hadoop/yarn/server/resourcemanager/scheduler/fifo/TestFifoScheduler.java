@@ -20,6 +20,7 @@ package org.apache.hadoop.yarn.server.resourcemanager.scheduler.fifo;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+
 import static org.mockito.Mockito.mock;
 
 import java.io.IOException;
@@ -28,6 +29,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+
+import junit.framework.Assert;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -57,13 +60,13 @@ import org.apache.hadoop.yarn.server.resourcemanager.ResourceManager;
 import org.apache.hadoop.yarn.server.resourcemanager.Task;
 import org.apache.hadoop.yarn.server.resourcemanager.ahs.RMApplicationHistoryWriter;
 import org.apache.hadoop.yarn.server.resourcemanager.rmnode.RMNode;
-import org.apache.hadoop.yarn.server.resourcemanager.scheduler.AbstractYarnScheduler;
+import org.apache.hadoop.yarn.server.resourcemanager.scheduler.Queue;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.QueueMetrics;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.ResourceScheduler;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.SchedulerAppReport;
-import org.apache.hadoop.yarn.server.resourcemanager.scheduler.SchedulerApplicationAttempt;
-import org.apache.hadoop.yarn.server.resourcemanager.scheduler.SchedulerNode;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.TestSchedulerUtils;
+import org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity.TestCapacityScheduler;
+import org.apache.hadoop.yarn.server.resourcemanager.scheduler.common.fica.FiCaSchedulerApp;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.common.fica.FiCaSchedulerNode;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.event.AppAddedSchedulerEvent;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.event.AppAttemptAddedSchedulerEvent;
@@ -75,7 +78,6 @@ import org.apache.hadoop.yarn.server.resourcemanager.security.RMContainerTokenSe
 import org.apache.hadoop.yarn.server.utils.BuilderUtils;
 import org.apache.hadoop.yarn.util.resource.Resources;
 import org.junit.After;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -135,7 +137,7 @@ public class TestFifoScheduler {
   public void testFifoSchedulerCapacityWhenNoNMs() {
     FifoScheduler scheduler = new FifoScheduler();
     QueueInfo queueInfo = scheduler.getQueueInfo(null, false, false);
-    Assert.assertEquals(0.0f, queueInfo.getCurrentCapacity(), 0.0f);
+    Assert.assertEquals(0.0f, queueInfo.getCurrentCapacity());
   }
   
   @Test(timeout=5000)
@@ -145,13 +147,9 @@ public class TestFifoScheduler {
     RMContext rmContext = new RMContextImpl(dispatcher, null,
         null, null, null, null, null, null, null, writer);
 
-    FifoScheduler scheduler = new FifoScheduler();
-    Configuration conf = new Configuration();
-    scheduler.setRMContext(rmContext);
-    scheduler.init(conf);
-    scheduler.start();
-    scheduler.reinitialize(conf, rmContext);
-    QueueMetrics metrics = scheduler.getRootQueueMetrics();
+    FifoScheduler schedular = new FifoScheduler();
+    schedular.reinitialize(new Configuration(), rmContext);
+    QueueMetrics metrics = schedular.getRootQueueMetrics();
     int beforeAppsSubmitted = metrics.getAppsSubmitted();
 
     ApplicationId appId = BuilderUtils.newApplicationId(200, 1);
@@ -159,19 +157,18 @@ public class TestFifoScheduler {
         appId, 1);
 
     SchedulerEvent appEvent = new AppAddedSchedulerEvent(appId, "queue", "user");
-    scheduler.handle(appEvent);
+    schedular.handle(appEvent);
     SchedulerEvent attemptEvent =
         new AppAttemptAddedSchedulerEvent(appAttemptId, false);
-    scheduler.handle(attemptEvent);
+    schedular.handle(attemptEvent);
 
     appAttemptId = BuilderUtils.newApplicationAttemptId(appId, 2);
     SchedulerEvent attemptEvent2 =
         new AppAttemptAddedSchedulerEvent(appAttemptId, false);
-    scheduler.handle(attemptEvent2);
+    schedular.handle(attemptEvent2);
 
     int afterAppsSubmitted = metrics.getAppsSubmitted();
     Assert.assertEquals(1, afterAppsSubmitted - beforeAppsSubmitted);
-    scheduler.stop();
   }
 
   @Test(timeout=2000)
@@ -189,9 +186,6 @@ public class TestFifoScheduler {
         null, containerTokenSecretManager, nmTokenSecretManager, null, writer);
 
     FifoScheduler scheduler = new FifoScheduler();
-    scheduler.setRMContext(rmContext);
-    scheduler.init(conf);
-    scheduler.start();
     scheduler.reinitialize(new Configuration(), rmContext);
 
     RMNode node0 = MockNodes.newNodeInfo(1,
@@ -240,7 +234,6 @@ public class TestFifoScheduler {
     //Also check that the containers were scheduled
     SchedulerAppReport info = scheduler.getSchedulerAppInfo(appAttemptId);
     Assert.assertEquals(3, info.getLiveContainers().size());
-    scheduler.stop();
   }
   
   @Test(timeout=2000)
@@ -263,9 +256,6 @@ public class TestFifoScheduler {
         return nodes;
       }
     };
-    scheduler.setRMContext(rmContext);
-    scheduler.init(conf);
-    scheduler.start();
     scheduler.reinitialize(new Configuration(), rmContext);
     RMNode node0 = MockNodes.newNodeInfo(1,
         Resources.createResource(2048, 4), 1, "127.0.0.1");
@@ -292,7 +282,7 @@ public class TestFifoScheduler {
     assertEquals(schedulerNodes.get(node0.getNodeID()).
         getAvailableResource().getMemory(), 1024);
     QueueInfo queueInfo = scheduler.getQueueInfo(null, false, false);
-    Assert.assertEquals(0.0f, queueInfo.getCurrentCapacity(), 0.0f);
+    Assert.assertEquals(0.0f, queueInfo.getCurrentCapacity());
     
     int _appId = 1;
     int _appAttemptId = 1;
@@ -334,7 +324,7 @@ public class TestFifoScheduler {
     Assert.assertEquals(1, info.getLiveContainers().size());
     // And check the default Queue now is full.
     queueInfo = scheduler.getQueueInfo(null, false, false);
-    Assert.assertEquals(1.0f, queueInfo.getCurrentCapacity(), 0.0f);
+    Assert.assertEquals(1.0f, queueInfo.getCurrentCapacity());
   }
   
 //  @Test
@@ -604,12 +594,9 @@ public class TestFifoScheduler {
   public void testAddAndRemoveAppFromFiFoScheduler() throws Exception {
     Configuration conf = new Configuration();
     conf.setClass(YarnConfiguration.RM_SCHEDULER, FifoScheduler.class,
-      ResourceScheduler.class);
+        ResourceScheduler.class);
     MockRM rm = new MockRM(conf);
-    @SuppressWarnings("unchecked")
-    AbstractYarnScheduler<SchedulerApplicationAttempt, SchedulerNode> fs =
-        (AbstractYarnScheduler<SchedulerApplicationAttempt, SchedulerNode>) rm
-          .getResourceScheduler();
+    FifoScheduler fs = (FifoScheduler)rm.getResourceScheduler();
     TestSchedulerUtils.verifyAppAddedAndRemovedFromScheduler(
       fs.getSchedulerApplications(), fs, "queue");
   }

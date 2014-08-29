@@ -31,7 +31,5 @@ public enum ResourceEventType {
   /** See {@link ResourceReleaseEvent} */
   RELEASE,
   /** See {@link ResourceFailedLocalizationEvent} */
-  LOCALIZATION_FAILED,
-  /** See {@link ResourceRecoveredEvent} */
-  RECOVERED
+  LOCALIZATION_FAILED
 }

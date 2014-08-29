@@ -22,7 +22,6 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -44,22 +43,14 @@ import org.apache.hadoop.security.token.delegation.DelegationKey;
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
 import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
-import org.apache.hadoop.yarn.proto.YarnServerCommonProtos.VersionProto;
-import org.apache.hadoop.yarn.proto.YarnServerResourceManagerRecoveryProtos.AMRMTokenSecretManagerStateProto;
-import org.apache.hadoop.yarn.proto.YarnServerResourceManagerServiceProtos.EpochProto;
 import org.apache.hadoop.yarn.proto.YarnServerResourceManagerServiceProtos.ApplicationAttemptStateDataProto;
 import org.apache.hadoop.yarn.proto.YarnServerResourceManagerServiceProtos.ApplicationStateDataProto;
+import org.apache.hadoop.yarn.proto.YarnServerResourceManagerServiceProtos.RMStateVersionProto;
 import org.apache.hadoop.yarn.security.client.RMDelegationTokenIdentifier;
-import org.apache.hadoop.yarn.server.records.Version;
-import org.apache.hadoop.yarn.server.records.impl.pb.VersionPBImpl;
-import org.apache.hadoop.yarn.server.resourcemanager.recovery.records.AMRMTokenSecretManagerState;
-import org.apache.hadoop.yarn.server.resourcemanager.recovery.records.ApplicationAttemptStateData;
-import org.apache.hadoop.yarn.server.resourcemanager.recovery.records.ApplicationStateData;
-import org.apache.hadoop.yarn.server.resourcemanager.recovery.records.Epoch;
-import org.apache.hadoop.yarn.server.resourcemanager.recovery.records.impl.pb.AMRMTokenSecretManagerStatePBImpl;
+import org.apache.hadoop.yarn.server.resourcemanager.recovery.records.RMStateVersion;
 import org.apache.hadoop.yarn.server.resourcemanager.recovery.records.impl.pb.ApplicationAttemptStateDataPBImpl;
 import org.apache.hadoop.yarn.server.resourcemanager.recovery.records.impl.pb.ApplicationStateDataPBImpl;
-import org.apache.hadoop.yarn.server.resourcemanager.recovery.records.impl.pb.EpochPBImpl;
+import org.apache.hadoop.yarn.server.resourcemanager.recovery.records.impl.pb.RMStateVersionPBImpl;
 import org.apache.hadoop.yarn.util.ConverterUtils;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -77,10 +68,8 @@ public class FileSystemRMStateStore extends RMStateStore {
   public static final Log LOG = LogFactory.getLog(FileSystemRMStateStore.class);
 
   protected static final String ROOT_DIR_NAME = "FSRMStateRoot";
-  protected static final Version CURRENT_VERSION_INFO = Version
-    .newInstance(1, 1);
-  protected static final String AMRMTOKEN_SECRET_MANAGER_NODE =
-      "AMRMTokenSecretManagerNode";
+  protected static final RMStateVersion CURRENT_VERSION_INFO = RMStateVersion
+    .newInstance(1, 0);
 
   protected FileSystem fs;
 
@@ -94,7 +83,6 @@ public class FileSystemRMStateStore extends RMStateStore {
   @VisibleForTesting
   Path fsWorkingPath;
 
-  Path amrmTokenSecretManagerRoot;
   @Override
   public synchronized void initInternal(Configuration conf)
       throws Exception{
@@ -102,8 +90,6 @@ public class FileSystemRMStateStore extends RMStateStore {
     rootDirPath = new Path(fsWorkingPath, ROOT_DIR_NAME);
     rmDTSecretManagerRoot = new Path(rootDirPath, RM_DT_SECRET_MANAGER_ROOT);
     rmAppRoot = new Path(rootDirPath, RM_APP_ROOT);
-    amrmTokenSecretManagerRoot =
-        new Path(rootDirPath, AMRMTOKEN_SECRET_MANAGER_ROOT);
   }
 
   @Override
@@ -121,7 +107,6 @@ public class FileSystemRMStateStore extends RMStateStore {
     fs = fsWorkingPath.getFileSystem(conf);
     fs.mkdirs(rmDTSecretManagerRoot);
     fs.mkdirs(rmAppRoot);
-    fs.mkdirs(amrmTokenSecretManagerRoot);
   }
 
   @Override
@@ -130,18 +115,18 @@ public class FileSystemRMStateStore extends RMStateStore {
   }
 
   @Override
-  protected Version getCurrentVersion() {
+  protected RMStateVersion getCurrentVersion() {
     return CURRENT_VERSION_INFO;
   }
 
   @Override
-  protected synchronized Version loadVersion() throws Exception {
+  protected synchronized RMStateVersion loadVersion() throws Exception {
     Path versionNodePath = getNodePath(rootDirPath, VERSION_NODE);
     if (fs.exists(versionNodePath)) {
       FileStatus status = fs.getFileStatus(versionNodePath);
       byte[] data = readFile(versionNodePath, status.getLen());
-      Version version =
-          new VersionPBImpl(VersionProto.parseFrom(data));
+      RMStateVersion version =
+          new RMStateVersionPBImpl(RMStateVersionProto.parseFrom(data));
       return version;
     }
     return null;
@@ -151,37 +136,14 @@ public class FileSystemRMStateStore extends RMStateStore {
   protected synchronized void storeVersion() throws Exception {
     Path versionNodePath = getNodePath(rootDirPath, VERSION_NODE);
     byte[] data =
-        ((VersionPBImpl) CURRENT_VERSION_INFO).getProto().toByteArray();
+        ((RMStateVersionPBImpl) CURRENT_VERSION_INFO).getProto().toByteArray();
     if (fs.exists(versionNodePath)) {
       updateFile(versionNodePath, data);
     } else {
       writeFile(versionNodePath, data);
     }
   }
-  
-  @Override
-  public synchronized int getAndIncrementEpoch() throws Exception {
-    Path epochNodePath = getNodePath(rootDirPath, EPOCH_NODE);
-    int currentEpoch = 0;
-    if (fs.exists(epochNodePath)) {
-      // load current epoch
-      FileStatus status = fs.getFileStatus(epochNodePath);
-      byte[] data = readFile(epochNodePath, status.getLen());
-      Epoch epoch = new EpochPBImpl(EpochProto.parseFrom(data));
-      currentEpoch = epoch.getEpoch();
-      // increment epoch and store it
-      byte[] storeData = Epoch.newInstance(currentEpoch + 1).getProto()
-          .toByteArray();
-      updateFile(epochNodePath, storeData);
-    } else {
-      // initialize epoch file with 1 for the next time.
-      byte[] storeData = Epoch.newInstance(currentEpoch + 1).getProto()
-          .toByteArray();
-      writeFile(epochNodePath, storeData);
-    }
-    return currentEpoch;
-  }
-  
+
   @Override
   public synchronized RMState loadState() throws Exception {
     RMState rmState = new RMState();
@@ -189,30 +151,7 @@ public class FileSystemRMStateStore extends RMStateStore {
     loadRMDTSecretManagerState(rmState);
     // recover RM applications
     loadRMAppState(rmState);
-    // recover AMRMTokenSecretManager
-    loadAMRMTokenSecretManagerState(rmState);
     return rmState;
-  }
-
-  private void loadAMRMTokenSecretManagerState(RMState rmState)
-      throws Exception {
-    checkAndResumeUpdateOperation(amrmTokenSecretManagerRoot);
-    Path amrmTokenSecretManagerStateDataDir =
-        new Path(amrmTokenSecretManagerRoot, AMRMTOKEN_SECRET_MANAGER_NODE);
-    FileStatus status;
-    try {
-      status = fs.getFileStatus(amrmTokenSecretManagerStateDataDir);
-      assert status.isFile();
-    } catch (FileNotFoundException ex) {
-      return;
-    }
-    byte[] data = readFile(amrmTokenSecretManagerStateDataDir, status.getLen());
-    AMRMTokenSecretManagerStatePBImpl stateData =
-        new AMRMTokenSecretManagerStatePBImpl(
-          AMRMTokenSecretManagerStateProto.parseFrom(data));
-    rmState.amrmTokenSecretManagerState =
-        AMRMTokenSecretManagerState.newInstance(
-          stateData.getCurrentMasterKey(), stateData.getNextMasterKey());
   }
 
   private void loadRMAppState(RMState rmState) throws Exception {
@@ -275,8 +214,7 @@ public class FileSystemRMStateStore extends RMStateStore {
                   attemptStateData.getState(),
                   attemptStateData.getFinalTrackingUrl(),
                   attemptStateData.getDiagnostics(),
-                  attemptStateData.getFinalApplicationStatus(),
-                  attemptStateData.getAMContainerExitStatus());
+                  attemptStateData.getFinalApplicationStatus());
 
             // assert child node name is same as application attempt id
             assert attemptId.equals(attemptState.getAttemptId());
@@ -376,7 +314,7 @@ public class FileSystemRMStateStore extends RMStateStore {
 
   @Override
   public synchronized void storeApplicationStateInternal(ApplicationId appId,
-      ApplicationStateData appStateDataPB) throws Exception {
+      ApplicationStateDataPBImpl appStateDataPB) throws Exception {
     String appIdStr = appId.toString();
     Path appDirPath = getAppDir(rmAppRoot, appIdStr);
     fs.mkdirs(appDirPath);
@@ -396,7 +334,7 @@ public class FileSystemRMStateStore extends RMStateStore {
 
   @Override
   public synchronized void updateApplicationStateInternal(ApplicationId appId,
-      ApplicationStateData appStateDataPB) throws Exception {
+      ApplicationStateDataPBImpl appStateDataPB) throws Exception {
     String appIdStr = appId.toString();
     Path appDirPath = getAppDir(rmAppRoot, appIdStr);
     Path nodeCreatePath = getNodePath(appDirPath, appIdStr);
@@ -416,7 +354,7 @@ public class FileSystemRMStateStore extends RMStateStore {
   @Override
   public synchronized void storeApplicationAttemptStateInternal(
       ApplicationAttemptId appAttemptId,
-      ApplicationAttemptStateData attemptStateDataPB)
+      ApplicationAttemptStateDataPBImpl attemptStateDataPB)
       throws Exception {
     Path appDirPath =
         getAppDir(rmAppRoot, appAttemptId.getApplicationId().toString());
@@ -437,7 +375,7 @@ public class FileSystemRMStateStore extends RMStateStore {
   @Override
   public synchronized void updateApplicationAttemptStateInternal(
       ApplicationAttemptId appAttemptId,
-      ApplicationAttemptStateData attemptStateDataPB)
+      ApplicationAttemptStateDataPBImpl attemptStateDataPB)
       throws Exception {
     Path appDirPath =
         getAppDir(rmAppRoot, appAttemptId.getApplicationId().toString());
@@ -547,13 +485,6 @@ public class FileSystemRMStateStore extends RMStateStore {
     deleteFile(nodeCreatePath);
   }
 
-  @Override
-  public synchronized void deleteStore() throws IOException {
-    if (fs.exists(rootDirPath)) {
-      fs.delete(rootDirPath, true);
-    }
-  }
-
   private Path getAppDir(Path root, String appId) {
     return getNodePath(root, appId);
   }
@@ -607,8 +538,6 @@ public class FileSystemRMStateStore extends RMStateStore {
   protected void replaceFile(Path srcPath, Path dstPath) throws Exception {
     if (fs.exists(dstPath)) {
       deleteFile(dstPath);
-    } else {
-      LOG.info("File doesn't exist. Skip deleting the file " + dstPath);
     }
     fs.rename(srcPath, dstPath);
   }
@@ -627,27 +556,6 @@ public class FileSystemRMStateStore extends RMStateStore {
   @VisibleForTesting
   Path getNodePath(Path root, String nodeName) {
     return new Path(root, nodeName);
-  }
-
-  @Override
-  public synchronized void storeOrUpdateAMRMTokenSecretManagerState(
-      AMRMTokenSecretManagerState amrmTokenSecretManagerState,
-      boolean isUpdate){
-    Path nodeCreatePath =
-        getNodePath(amrmTokenSecretManagerRoot, AMRMTOKEN_SECRET_MANAGER_NODE);
-    AMRMTokenSecretManagerState data =
-        AMRMTokenSecretManagerState.newInstance(amrmTokenSecretManagerState);
-    byte[] stateData = data.getProto().toByteArray();
-    try {
-      if (isUpdate) {
-        updateFile(nodeCreatePath, stateData);
-      } else {
-        writeFile(nodeCreatePath, stateData);
-      }
-    } catch (Exception ex) {
-      LOG.info("Error storing info for AMRMTokenSecretManager", ex);
-      notifyStoreOperationFailed(ex);
-    }
   }
 
 }

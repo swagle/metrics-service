@@ -17,7 +17,6 @@
 */
 package org.apache.hadoop.yarn.server.resourcemanager.scheduler;
 
-import com.google.common.base.Preconditions;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -33,7 +32,6 @@ import org.apache.hadoop.classification.InterfaceStability.Unstable;
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
 import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.api.records.ApplicationResourceUsageReport;
-import org.apache.hadoop.yarn.api.records.ApplicationSubmissionContext;
 import org.apache.hadoop.yarn.api.records.Container;
 import org.apache.hadoop.yarn.api.records.ContainerId;
 import org.apache.hadoop.yarn.api.records.NMToken;
@@ -41,7 +39,6 @@ import org.apache.hadoop.yarn.api.records.NodeId;
 import org.apache.hadoop.yarn.api.records.Priority;
 import org.apache.hadoop.yarn.api.records.Resource;
 import org.apache.hadoop.yarn.api.records.ResourceRequest;
-import org.apache.hadoop.yarn.exceptions.YarnRuntimeException;
 import org.apache.hadoop.yarn.server.resourcemanager.RMContext;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttemptState;
 import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.RMContainer;
@@ -49,7 +46,6 @@ import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.RMContainerEven
 import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.RMContainerEventType;
 import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.RMContainerImpl;
 import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.RMContainerReservedEvent;
-import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.RMContainerState;
 import org.apache.hadoop.yarn.server.resourcemanager.rmnode.RMNodeCleanContainerEvent;
 import org.apache.hadoop.yarn.util.resource.Resources;
 
@@ -80,9 +76,6 @@ public class SchedulerApplicationAttempt {
   protected final Resource currentReservation = Resource.newInstance(0, 0);
   private Resource resourceLimit = Resource.newInstance(0, 0);
   protected Resource currentConsumption = Resource.newInstance(0, 0);
-  private Resource amResource;
-  private boolean unmanagedAM = true;
-  private boolean amRunning = false;
 
   protected List<RMContainer> newlyAllocatedContainers = 
       new ArrayList<RMContainer>();
@@ -108,23 +101,11 @@ public class SchedulerApplicationAttempt {
   public SchedulerApplicationAttempt(ApplicationAttemptId applicationAttemptId, 
       String user, Queue queue, ActiveUsersManager activeUsersManager,
       RMContext rmContext) {
-    Preconditions.checkNotNull("RMContext should not be null", rmContext);
     this.rmContext = rmContext;
     this.appSchedulingInfo = 
         new AppSchedulingInfo(applicationAttemptId, user, queue,  
-            activeUsersManager, rmContext.getEpoch());
+            activeUsersManager);
     this.queue = queue;
-    
-    if (rmContext.getRMApps() != null &&
-        rmContext.getRMApps()
-            .containsKey(applicationAttemptId.getApplicationId())) {
-      ApplicationSubmissionContext appSubmissionContext =
-          rmContext.getRMApps().get(applicationAttemptId.getApplicationId())
-              .getApplicationSubmissionContext();
-      if (appSubmissionContext != null) {
-        unmanagedAM = appSubmissionContext.getUnmanagedAM();
-      }
-    }
   }
   
   /**
@@ -187,26 +168,6 @@ public class SchedulerApplicationAttempt {
     return appSchedulingInfo.getQueueName();
   }
   
-  public Resource getAMResource() {
-    return amResource;
-  }
-
-  public void setAMResource(Resource amResource) {
-    this.amResource = amResource;
-  }
-
-  public boolean isAmRunning() {
-    return amRunning;
-  }
-
-  public void setAmRunning(boolean bool) {
-    amRunning = bool;
-  }
-
-  public boolean getUnmanagedAM() {
-    return unmanagedAM;
-  }
-
   public synchronized RMContainer getRMContainer(ContainerId id) {
     return liveContainers.get(id);
   }
@@ -241,14 +202,7 @@ public class SchedulerApplicationAttempt {
   public synchronized void updateResourceRequests(
       List<ResourceRequest> requests) {
     if (!isStopped) {
-      appSchedulingInfo.updateResourceRequests(requests, false);
-    }
-  }
-  
-  public synchronized void recoverResourceRequests(
-      List<ResourceRequest> requests) {
-    if (!isStopped) {
-      appSchedulingInfo.updateResourceRequests(requests, true);
+      appSchedulingInfo.updateResourceRequests(requests);
     }
   }
   
@@ -301,15 +255,13 @@ public class SchedulerApplicationAttempt {
       this.reservedContainers.put(priority, reservedContainers);
     }
     reservedContainers.put(node.getNodeID(), rmContainer);
-
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("Application attempt " + getApplicationAttemptId()
-          + " reserved container " + rmContainer + " on node " + node
-          + ". This attempt currently has " + reservedContainers.size()
-          + " reserved containers at priority " + priority
-          + "; currentReservation " + currentReservation.getMemory());
-    }
-
+    
+    LOG.info("Application " + getApplicationId() 
+        + " reserved container " + rmContainer
+        + " on node " + node + ", currently has " + reservedContainers.size()
+        + " at priority " + priority 
+        + "; currentReservation " + currentReservation.getMemory());
+    
     return rmContainer;
   }
   
@@ -424,8 +376,7 @@ public class SchedulerApplicationAttempt {
         // create container token and NMToken altogether.
         container.setContainerToken(rmContext.getContainerTokenSecretManager()
           .createContainerToken(container.getId(), container.getNodeId(),
-            getUser(), container.getResource(), container.getPriority(),
-            rmContainer.getCreationTime()));
+            getUser(), container.getResource()));
         NMToken nmToken =
             rmContext.getNMTokenSecretManager().createAndGetNMToken(getUser(),
               getApplicationAttemptId(), container);
@@ -546,24 +497,5 @@ public class SchedulerApplicationAttempt {
 
     appSchedulingInfo.move(newQueue);
     this.queue = newQueue;
-  }
-
-  public synchronized void recoverContainer(RMContainer rmContainer) {
-    // recover app scheduling info
-    appSchedulingInfo.recoverContainer(rmContainer);
-
-    if (rmContainer.getState().equals(RMContainerState.COMPLETED)) {
-      return;
-    }
-    LOG.info("SchedulerAttempt " + getApplicationAttemptId()
-      + " is recovering container " + rmContainer.getContainerId());
-    liveContainers.put(rmContainer.getContainerId(), rmContainer);
-    Resources.addTo(currentConsumption, rmContainer.getContainer()
-      .getResource());
-    // resourceLimit: updated when LeafQueue#recoverContainer#allocateResource
-    // is called.
-    // newlyAllocatedContainers.add(rmContainer);
-    // schedulingOpportunities
-    // lastScheduledContainer
-  }
+  }  
 }

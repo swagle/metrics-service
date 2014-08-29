@@ -90,9 +90,6 @@ public class TestRMAdminService {
     fs.delete(tmpDir, true);
     fs.mkdirs(workingPath);
     fs.mkdirs(tmpDir);
-
-    // reset the groups to what it default test settings
-    MockUnixGroupsMapping.resetGroups();
   }
 
   @After
@@ -348,14 +345,14 @@ public class TestRMAdminService {
 
     rm.adminService.refreshSuperUserGroupsConfiguration(
         RefreshSuperUserGroupsConfigurationRequest.newInstance());
-    Assert.assertTrue(ProxyUsers.getDefaultImpersonationProvider().getProxyGroups()
+    Assert.assertTrue(ProxyUsers.getProxyGroups()
         .get("hadoop.proxyuser.test.groups").size() == 1);
-    Assert.assertTrue(ProxyUsers.getDefaultImpersonationProvider().getProxyGroups()
+    Assert.assertTrue(ProxyUsers.getProxyGroups()
         .get("hadoop.proxyuser.test.groups").contains("test_groups"));
 
-    Assert.assertTrue(ProxyUsers.getDefaultImpersonationProvider().getProxyHosts()
+    Assert.assertTrue(ProxyUsers.getProxyHosts()
         .get("hadoop.proxyuser.test.hosts").size() == 1);
-    Assert.assertTrue(ProxyUsers.getDefaultImpersonationProvider().getProxyHosts()
+    Assert.assertTrue(ProxyUsers.getProxyHosts()
         .get("hadoop.proxyuser.test.hosts").contains("test_hosts"));
   }
 
@@ -708,14 +705,14 @@ public class TestRMAdminService {
           aclsString);
 
       // verify ProxyUsers and ProxyHosts
-      Assert.assertTrue(ProxyUsers.getDefaultImpersonationProvider().getProxyGroups()
+      Assert.assertTrue(ProxyUsers.getProxyGroups()
           .get("hadoop.proxyuser.test.groups").size() == 1);
-      Assert.assertTrue(ProxyUsers.getDefaultImpersonationProvider().getProxyGroups()
+      Assert.assertTrue(ProxyUsers.getProxyGroups()
           .get("hadoop.proxyuser.test.groups").contains("test_groups"));
 
-      Assert.assertTrue(ProxyUsers.getDefaultImpersonationProvider().getProxyHosts()
+      Assert.assertTrue(ProxyUsers.getProxyHosts()
           .get("hadoop.proxyuser.test.hosts").size() == 1);
-      Assert.assertTrue(ProxyUsers.getDefaultImpersonationProvider().getProxyHosts()
+      Assert.assertTrue(ProxyUsers.getProxyHosts()
           .get("hadoop.proxyuser.test.hosts").contains("test_hosts"));
 
       // verify UserToGroupsMappings
@@ -788,7 +785,12 @@ public class TestRMAdminService {
   private static class MockUnixGroupsMapping implements
       GroupMappingServiceProvider {
 
-    private static List<String> group = new ArrayList<String>();
+    @SuppressWarnings("serial")
+    private static List<String> group = new ArrayList<String>() {{
+      add("test_group_A");
+      add("test_group_B");
+      add("test_group_C");
+    }};
 
     @Override
     public List<String> getGroups(String user) throws IOException {
@@ -810,13 +812,6 @@ public class TestRMAdminService {
       group.add("test_group_D");
       group.add("test_group_E");
       group.add("test_group_F");
-    }
-    
-    public static void resetGroups() {
-      group.clear();
-      group.add("test_group_A");
-      group.add("test_group_B");
-      group.add("test_group_C");
     }
   }
 

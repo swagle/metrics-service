@@ -21,7 +21,7 @@ package org.apache.hadoop.yarn.client;
 import java.io.IOException;
 import java.util.ArrayList;
 
-import org.junit.Assert;
+import junit.framework.Assert;
 
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.ipc.RPC;
@@ -54,9 +54,11 @@ public class TestApplicationMasterServiceOnHA extends ProtocolHATestBase{
     amClient = ClientRMProxy
         .createRMProxy(this.conf, ApplicationMasterProtocol.class);
 
+    AMRMTokenIdentifier id =
+        new AMRMTokenIdentifier(attemptId);
     Token<AMRMTokenIdentifier> appToken =
-        this.cluster.getResourceManager().getRMContext()
-          .getAMRMTokenSecretManager().createAndGetAMRMToken(attemptId);
+        new Token<AMRMTokenIdentifier>(id, this.cluster.getResourceManager()
+            .getRMContext().getAMRMTokenSecretManager());
     appToken.setService(new Text("appToken service"));
     UserGroupInformation.setLoginUser(UserGroupInformation
         .createRemoteUser(UserGroupInformation.getCurrentUser()

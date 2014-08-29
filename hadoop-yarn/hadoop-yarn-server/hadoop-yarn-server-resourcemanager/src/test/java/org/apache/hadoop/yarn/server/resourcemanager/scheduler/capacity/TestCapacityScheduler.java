@@ -25,33 +25,19 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.security.PrivilegedAction;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.BrokenBarrierException;
-import java.util.concurrent.CyclicBarrier;
+
+import junit.framework.Assert;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.net.NetworkTopology;
-import org.apache.hadoop.security.Credentials;
-import org.apache.hadoop.security.UserGroupInformation;
-import org.apache.hadoop.security.token.Token;
-import org.apache.hadoop.security.token.TokenIdentifier;
 import org.apache.hadoop.yarn.LocalConfigurationProvider;
-import org.apache.hadoop.yarn.api.ApplicationMasterProtocol;
-import org.apache.hadoop.yarn.api.protocolrecords.AllocateRequest;
-import org.apache.hadoop.yarn.api.protocolrecords.RegisterApplicationMasterRequest;
-import org.apache.hadoop.yarn.api.records.ApplicationAccessType;
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
 import org.apache.hadoop.yarn.api.records.ApplicationId;
-import org.apache.hadoop.yarn.api.records.Container;
 import org.apache.hadoop.yarn.api.records.ContainerId;
 import org.apache.hadoop.yarn.api.records.Priority;
 import org.apache.hadoop.yarn.api.records.QueueInfo;
@@ -62,35 +48,18 @@ import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.hadoop.yarn.event.AsyncDispatcher;
 import org.apache.hadoop.yarn.exceptions.YarnException;
 import org.apache.hadoop.yarn.exceptions.YarnRuntimeException;
-import org.apache.hadoop.yarn.ipc.YarnRPC;
 import org.apache.hadoop.yarn.server.resourcemanager.Application;
-import org.apache.hadoop.yarn.server.resourcemanager.MockAM;
-import org.apache.hadoop.yarn.server.resourcemanager.MockNM;
 import org.apache.hadoop.yarn.server.resourcemanager.MockNodes;
 import org.apache.hadoop.yarn.server.resourcemanager.MockRM;
 import org.apache.hadoop.yarn.server.resourcemanager.RMContext;
 import org.apache.hadoop.yarn.server.resourcemanager.RMContextImpl;
 import org.apache.hadoop.yarn.server.resourcemanager.ResourceManager;
 import org.apache.hadoop.yarn.server.resourcemanager.Task;
-import org.apache.hadoop.yarn.server.resourcemanager.TestAMAuthorization.MockRMWithAMS;
-import org.apache.hadoop.yarn.server.resourcemanager.TestAMAuthorization.MyContainerManager;
-import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMApp;
-import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMAppMetrics;
-import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMAppState;
-import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttempt;
-import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttemptMetrics;
-import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttemptState;
-import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.RMContainer;
-import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.RMContainerState;
 import org.apache.hadoop.yarn.server.resourcemanager.rmnode.RMNode;
-import org.apache.hadoop.yarn.server.resourcemanager.scheduler.AbstractYarnScheduler;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.ResourceScheduler;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.SchedulerApplication;
-import org.apache.hadoop.yarn.server.resourcemanager.scheduler.SchedulerApplicationAttempt;
-import org.apache.hadoop.yarn.server.resourcemanager.scheduler.SchedulerNode;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.TestSchedulerUtils;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.common.fica.FiCaSchedulerApp;
-import org.apache.hadoop.yarn.server.resourcemanager.scheduler.common.fica.FiCaSchedulerNode;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.event.AppAddedSchedulerEvent;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.event.AppAttemptAddedSchedulerEvent;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.event.NodeAddedSchedulerEvent;
@@ -103,7 +72,6 @@ import org.apache.hadoop.yarn.server.resourcemanager.security.RMContainerTokenSe
 import org.apache.hadoop.yarn.server.utils.BuilderUtils;
 import org.apache.hadoop.yarn.util.resource.Resources;
 import org.junit.After;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mockito;
@@ -151,16 +119,13 @@ public class TestCapacityScheduler {
 
   @After
   public void tearDown() throws Exception {
-    if (resourceManager != null) {
-      resourceManager.stop();
-    }
+    resourceManager.stop();
   }
 
 
   @Test (timeout = 30000)
   public void testConfValidation() throws Exception {
     ResourceScheduler scheduler = new CapacityScheduler();
-    scheduler.setRMContext(resourceManager.getRMContext());
     Configuration conf = new YarnConfiguration();
     conf.setInt(YarnConfiguration.RM_SCHEDULER_MINIMUM_ALLOCATION_MB, 2048);
     conf.setInt(YarnConfiguration.RM_SCHEDULER_MAXIMUM_ALLOCATION_MB, 1024);
@@ -375,23 +340,18 @@ public class TestCapacityScheduler {
   public void testRefreshQueues() throws Exception {
     CapacityScheduler cs = new CapacityScheduler();
     CapacitySchedulerConfiguration conf = new CapacitySchedulerConfiguration();
-    RMContextImpl rmContext =  new RMContextImpl(null, null, null, null, null,
-        null, new RMContainerTokenSecretManager(conf),
-        new NMTokenSecretManagerInRM(conf),
-        new ClientToAMTokenSecretManagerInRM(), null);
     setupQueueConfiguration(conf);
     cs.setConf(new YarnConfiguration());
-    cs.setRMContext(resourceManager.getRMContext());
-    cs.init(conf);
-    cs.start();
-    cs.reinitialize(conf, rmContext);
+    cs.reinitialize(conf, new RMContextImpl(null, null, null, null, null,
+      null, new RMContainerTokenSecretManager(conf),
+      new NMTokenSecretManagerInRM(conf),
+      new ClientToAMTokenSecretManagerInRM(), null));
     checkQueueCapacities(cs, A_CAPACITY, B_CAPACITY);
 
     conf.setCapacity(A, 80f);
     conf.setCapacity(B, 20f);
     cs.reinitialize(conf, mockContext);
     checkQueueCapacities(cs, 80f, 20f);
-    cs.stop();
   }
 
   private void checkQueueCapacities(CapacityScheduler cs,
@@ -494,9 +454,6 @@ public class TestCapacityScheduler {
     setupQueueConfiguration(csConf);
     CapacityScheduler cs = new CapacityScheduler();
     cs.setConf(new YarnConfiguration());
-    cs.setRMContext(resourceManager.getRMContext());
-    cs.init(csConf);
-    cs.start();
     cs.reinitialize(csConf, new RMContextImpl(null, null, null, null,
       null, null, new RMContainerTokenSecretManager(csConf),
       new NMTokenSecretManagerInRM(csConf),
@@ -508,15 +465,14 @@ public class TestCapacityScheduler {
     cs.handle(new NodeAddedSchedulerEvent(n1));
     cs.handle(new NodeAddedSchedulerEvent(n2));
 
-    Assert.assertEquals(6 * GB, cs.getClusterResource().getMemory());
+    Assert.assertEquals(6 * GB, cs.getClusterResources().getMemory());
 
     // reconnect n1 with downgraded memory
     n1 = MockNodes.newNodeInfo(0, MockNodes.newResource(2 * GB), 1);
     cs.handle(new NodeRemovedSchedulerEvent(n1));
     cs.handle(new NodeAddedSchedulerEvent(n1));
 
-    Assert.assertEquals(4 * GB, cs.getClusterResource().getMemory());
-    cs.stop();
+    Assert.assertEquals(4 * GB, cs.getClusterResources().getMemory());
   }
 
   @Test
@@ -525,9 +481,6 @@ public class TestCapacityScheduler {
     CapacitySchedulerConfiguration conf = new CapacitySchedulerConfiguration();
     setupQueueConfiguration(conf);
     cs.setConf(new YarnConfiguration());
-    cs.setRMContext(resourceManager.getRMContext());
-    cs.init(conf);
-    cs.start();
     cs.reinitialize(conf, new RMContextImpl(null, null, null, null, null,
       null, new RMContainerTokenSecretManager(conf),
       new NMTokenSecretManagerInRM(conf),
@@ -558,7 +511,6 @@ public class TestCapacityScheduler {
       assertEquals(queueB, queueB4.getParent());
     } finally {
       B3_CAPACITY += B4_CAPACITY;
-      cs.stop();
     }
   }
   @Test
@@ -675,17 +627,17 @@ public class TestCapacityScheduler {
 
   @Test
   public void testAddAndRemoveAppFromCapacityScheduler() throws Exception {
+
+    AsyncDispatcher rmDispatcher = new AsyncDispatcher();
+    CapacityScheduler cs = new CapacityScheduler();
     CapacitySchedulerConfiguration conf = new CapacitySchedulerConfiguration();
     setupQueueConfiguration(conf);
-    conf.setClass(YarnConfiguration.RM_SCHEDULER, CapacityScheduler.class,
-      ResourceScheduler.class);
-    MockRM rm = new MockRM(conf);
-    @SuppressWarnings("unchecked")
-    AbstractYarnScheduler<SchedulerApplicationAttempt, SchedulerNode> cs =
-        (AbstractYarnScheduler<SchedulerApplicationAttempt, SchedulerNode>) rm
-          .getResourceScheduler();
+    cs.reinitialize(conf, new RMContextImpl(rmDispatcher, null, null, null,
+      null, null, new RMContainerTokenSecretManager(conf),
+      new NMTokenSecretManagerInRM(conf),
+      new ClientToAMTokenSecretManagerInRM(), null));
 
-    SchedulerApplication<SchedulerApplicationAttempt> app =
+    SchedulerApplication app =
         TestSchedulerUtils.verifyAppAddedAndRemovedFromScheduler(
           cs.getSchedulerApplications(), cs, "a1");
     Assert.assertEquals("a1", app.getQueue().getQueueName());
@@ -715,303 +667,5 @@ public class TestCapacityScheduler {
       CapacityScheduler.schedule(cs);
     }
   }
-  
-  private MockAM launchAM(RMApp app, MockRM rm, MockNM nm)
-      throws Exception {
-    RMAppAttempt attempt = app.getCurrentAppAttempt();
-    nm.nodeHeartbeat(true);
-    MockAM am = rm.sendAMLaunched(attempt.getAppAttemptId());
-    am.registerAppAttempt();
-    rm.waitForState(app.getApplicationId(), RMAppState.RUNNING);
-    return am;
-  }
 
-  private void waitForAppPreemptionInfo(RMApp app, Resource preempted,
-      int numAMPreempted, int numTaskPreempted,
-      Resource currentAttemptPreempted, boolean currentAttemptAMPreempted,
-      int numLatestAttemptTaskPreempted) throws InterruptedException {
-    while (true) {
-      RMAppMetrics appPM = app.getRMAppMetrics();
-      RMAppAttemptMetrics attemptPM =
-          app.getCurrentAppAttempt().getRMAppAttemptMetrics();
-
-      if (appPM.getResourcePreempted().equals(preempted)
-          && appPM.getNumAMContainersPreempted() == numAMPreempted
-          && appPM.getNumNonAMContainersPreempted() == numTaskPreempted
-          && attemptPM.getResourcePreempted().equals(currentAttemptPreempted)
-          && app.getCurrentAppAttempt().getRMAppAttemptMetrics()
-            .getIsPreempted() == currentAttemptAMPreempted
-          && attemptPM.getNumNonAMContainersPreempted() == 
-             numLatestAttemptTaskPreempted) {
-        return;
-      }
-      Thread.sleep(500);
-    }
-  }
-
-  private void waitForNewAttemptCreated(RMApp app,
-      ApplicationAttemptId previousAttemptId) throws InterruptedException {
-    while (app.getCurrentAppAttempt().equals(previousAttemptId)) {
-      Thread.sleep(500);
-    }
-  }
-  
-  @Test(timeout = 30000)
-  public void testAllocateDoesNotBlockOnSchedulerLock() throws Exception {
-    final YarnConfiguration conf = new YarnConfiguration();
-    conf.setClass(YarnConfiguration.RM_SCHEDULER, CapacityScheduler.class,
-        ResourceScheduler.class);
-    MyContainerManager containerManager = new MyContainerManager();
-    final MockRMWithAMS rm =
-        new MockRMWithAMS(conf, containerManager);
-    rm.start();
-
-    MockNM nm1 = rm.registerNode("localhost:1234", 5120);
-
-    Map<ApplicationAccessType, String> acls =
-        new HashMap<ApplicationAccessType, String>(2);
-    acls.put(ApplicationAccessType.VIEW_APP, "*");
-    RMApp app = rm.submitApp(1024, "appname", "appuser", acls);
-
-    nm1.nodeHeartbeat(true);
-
-    RMAppAttempt attempt = app.getCurrentAppAttempt();
-    ApplicationAttemptId applicationAttemptId = attempt.getAppAttemptId();
-    int msecToWait = 10000;
-    int msecToSleep = 100;
-    while (attempt.getAppAttemptState() != RMAppAttemptState.LAUNCHED
-        && msecToWait > 0) {
-      LOG.info("Waiting for AppAttempt to reach LAUNCHED state. "
-          + "Current state is " + attempt.getAppAttemptState());
-      Thread.sleep(msecToSleep);
-      msecToWait -= msecToSleep;
-    }
-    Assert.assertEquals(attempt.getAppAttemptState(),
-        RMAppAttemptState.LAUNCHED);
-
-    // Create a client to the RM.
-    final YarnRPC rpc = YarnRPC.create(conf);
-
-    UserGroupInformation currentUser =
-        UserGroupInformation.createRemoteUser(applicationAttemptId.toString());
-    Credentials credentials = containerManager.getContainerCredentials();
-    final InetSocketAddress rmBindAddress =
-        rm.getApplicationMasterService().getBindAddress();
-    Token<? extends TokenIdentifier> amRMToken =
-        MockRMWithAMS.setupAndReturnAMRMToken(rmBindAddress,
-          credentials.getAllTokens());
-    currentUser.addToken(amRMToken);
-    ApplicationMasterProtocol client =
-        currentUser.doAs(new PrivilegedAction<ApplicationMasterProtocol>() {
-          @Override
-          public ApplicationMasterProtocol run() {
-            return (ApplicationMasterProtocol) rpc.getProxy(
-              ApplicationMasterProtocol.class, rmBindAddress, conf);
-          }
-        });
-
-    RegisterApplicationMasterRequest request =
-        RegisterApplicationMasterRequest.newInstance("localhost", 12345, "");
-    client.registerApplicationMaster(request);
-
-    // grab the scheduler lock from another thread
-    // and verify an allocate call in this thread doesn't block on it
-    final CapacityScheduler cs = (CapacityScheduler) rm.getResourceScheduler();
-    final CyclicBarrier barrier = new CyclicBarrier(2);
-    Thread otherThread = new Thread(new Runnable() {
-      @Override
-      public void run() {
-        synchronized(cs) {
-          try {
-            barrier.await();
-            barrier.await();
-          } catch (InterruptedException e) {
-            e.printStackTrace();
-          } catch (BrokenBarrierException e) {
-            e.printStackTrace();
-          }
-        }
-      }
-    });
-    otherThread.start();
-    barrier.await();
-    AllocateRequest allocateRequest =
-        AllocateRequest.newInstance(0, 0.0f, null, null, null);
-    client.allocate(allocateRequest);
-    barrier.await();
-    otherThread.join();
-
-    rm.stop();
-  }
-
-  @Test
-  public void testNumClusterNodes() throws Exception {
-    YarnConfiguration conf = new YarnConfiguration();
-    CapacityScheduler cs = new CapacityScheduler();
-    cs.setConf(conf);
-    RMContextImpl rmContext =  new RMContextImpl(null, null, null, null, null,
-        null, new RMContainerTokenSecretManager(conf),
-        new NMTokenSecretManagerInRM(conf),
-        new ClientToAMTokenSecretManagerInRM(), null);
-    cs.setRMContext(rmContext);
-    CapacitySchedulerConfiguration csConf =
-        new CapacitySchedulerConfiguration();
-    setupQueueConfiguration(csConf);
-    cs.init(csConf);
-    cs.start();
-    assertEquals(0, cs.getNumClusterNodes());
-
-    RMNode n1 = MockNodes.newNodeInfo(0, MockNodes.newResource(4 * GB), 1);
-    RMNode n2 = MockNodes.newNodeInfo(0, MockNodes.newResource(2 * GB), 2);
-    cs.handle(new NodeAddedSchedulerEvent(n1));
-    cs.handle(new NodeAddedSchedulerEvent(n2));
-    assertEquals(2, cs.getNumClusterNodes());
-
-    cs.handle(new NodeRemovedSchedulerEvent(n1));
-    assertEquals(1, cs.getNumClusterNodes());
-    cs.handle(new NodeAddedSchedulerEvent(n1));
-    assertEquals(2, cs.getNumClusterNodes());
-    cs.handle(new NodeRemovedSchedulerEvent(n2));
-    cs.handle(new NodeRemovedSchedulerEvent(n1));
-    assertEquals(0, cs.getNumClusterNodes());
-
-    cs.stop();
-  }
-
-  @Test(timeout = 120000)
-  public void testPreemptionInfo() throws Exception {
-    Configuration conf = new Configuration();
-    conf.setInt(YarnConfiguration.RM_AM_MAX_ATTEMPTS, 3);
-    conf.setClass(YarnConfiguration.RM_SCHEDULER, CapacityScheduler.class,
-        ResourceScheduler.class);
-    int CONTAINER_MEMORY = 1024; // start RM
-    MockRM rm1 = new MockRM(conf);
-    rm1.start();
-
-    // get scheduler
-    CapacityScheduler cs = (CapacityScheduler) rm1.getResourceScheduler();
-
-    // start NM
-    MockNM nm1 =
-        new MockNM("127.0.0.1:1234", 15120, rm1.getResourceTrackerService());
-    nm1.registerNode();
-
-    // create app and launch the AM
-    RMApp app0 = rm1.submitApp(CONTAINER_MEMORY);
-    MockAM am0 = launchAM(app0, rm1, nm1);
-
-    // get scheduler app
-    FiCaSchedulerApp schedulerAppAttempt =
-        cs.getSchedulerApplications().get(app0.getApplicationId())
-            .getCurrentAppAttempt();
-
-    // allocate some containers and launch them
-    List<Container> allocatedContainers =
-        am0.allocateAndWaitForContainers(3, CONTAINER_MEMORY, nm1);
-
-    // kill the 3 containers
-    for (Container c : allocatedContainers) {
-      cs.killContainer(schedulerAppAttempt.getRMContainer(c.getId()));
-    }
-
-    // check values
-    waitForAppPreemptionInfo(app0,
-        Resource.newInstance(CONTAINER_MEMORY * 3, 3), 0, 3,
-        Resource.newInstance(CONTAINER_MEMORY * 3, 3), false, 3);
-
-    // kill app0-attempt0 AM container
-    cs.killContainer(schedulerAppAttempt.getRMContainer(app0
-        .getCurrentAppAttempt().getMasterContainer().getId()));
-
-    // wait for app0 failed
-    waitForNewAttemptCreated(app0, am0.getApplicationAttemptId());
-
-    // check values
-    waitForAppPreemptionInfo(app0,
-        Resource.newInstance(CONTAINER_MEMORY * 4, 4), 1, 3,
-        Resource.newInstance(0, 0), false, 0);
-
-    // launch app0-attempt1
-    MockAM am1 = launchAM(app0, rm1, nm1);
-    schedulerAppAttempt =
-        cs.getSchedulerApplications().get(app0.getApplicationId())
-            .getCurrentAppAttempt();
-
-    // allocate some containers and launch them
-    allocatedContainers =
-        am1.allocateAndWaitForContainers(3, CONTAINER_MEMORY, nm1);
-    for (Container c : allocatedContainers) {
-      cs.killContainer(schedulerAppAttempt.getRMContainer(c.getId()));
-    }
-
-    // check values
-    waitForAppPreemptionInfo(app0,
-        Resource.newInstance(CONTAINER_MEMORY * 7, 7), 1, 6,
-        Resource.newInstance(CONTAINER_MEMORY * 3, 3), false, 3);
-
-    rm1.stop();
-  }
-  
-  @Test(timeout = 30000)
-  public void testRecoverRequestAfterPreemption() throws Exception {
-    Configuration conf = new Configuration();
-    conf.setClass(YarnConfiguration.RM_SCHEDULER, CapacityScheduler.class,
-        ResourceScheduler.class);
-    MockRM rm1 = new MockRM(conf);
-    rm1.start();
-    MockNM nm1 = rm1.registerNode("127.0.0.1:1234", 8000);
-    RMApp app1 = rm1.submitApp(1024);
-    MockAM am1 = MockRM.launchAndRegisterAM(app1, rm1, nm1);
-    CapacityScheduler cs = (CapacityScheduler) rm1.getResourceScheduler();
-
-    // request a container.
-    am1.allocate("127.0.0.1", 1024, 1, new ArrayList<ContainerId>());
-    ContainerId containerId1 = ContainerId.newInstance(
-        am1.getApplicationAttemptId(), 2);
-    rm1.waitForState(nm1, containerId1, RMContainerState.ALLOCATED);
-
-    RMContainer rmContainer = cs.getRMContainer(containerId1);
-    List<ResourceRequest> requests = rmContainer.getResourceRequests();
-    FiCaSchedulerApp app = cs.getApplicationAttempt(am1
-        .getApplicationAttemptId());
-
-    FiCaSchedulerNode node = cs.getNode(rmContainer.getAllocatedNode());
-    for (ResourceRequest request : requests) {
-      // Skip the OffRack and RackLocal resource requests.
-      if (request.getResourceName().equals(node.getRackName())
-          || request.getResourceName().equals(ResourceRequest.ANY)) {
-        continue;
-      }
-
-      // Already the node local resource request is cleared from RM after
-      // allocation.
-      Assert.assertNull(app.getResourceRequest(request.getPriority(),
-          request.getResourceName()));
-    }
-
-    // Call killContainer to preempt the container
-    cs.killContainer(rmContainer);
-
-    Assert.assertEquals(3, requests.size());
-    for (ResourceRequest request : requests) {
-      // Resource request must have added back in RM after preempt event
-      // handling.
-      Assert.assertEquals(
-          1,
-          app.getResourceRequest(request.getPriority(),
-              request.getResourceName()).getNumContainers());
-    }
-
-    // New container will be allocated and will move to ALLOCATED state
-    ContainerId containerId2 = ContainerId.newInstance(
-        am1.getApplicationAttemptId(), 3);
-    rm1.waitForState(nm1, containerId2, RMContainerState.ALLOCATED);
-
-    // allocate container
-    List<Container> containers = am1.allocate(new ArrayList<ResourceRequest>(),
-        new ArrayList<ContainerId>()).getAllocatedContainers();
-
-    // Now with updated ResourceRequest, a container is allocated for AM.
-    Assert.assertTrue(containers.size() == 1);
-  }
 }

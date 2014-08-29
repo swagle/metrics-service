@@ -35,7 +35,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.junit.Assert;
+import junit.framework.Assert;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -203,6 +203,39 @@ public class TestAMRMClientAsync {
     Assert.assertTrue(callbackHandler.callbackCount == 0);
   }
 
+  @Test//(timeout=10000)
+  public void testAMRMClientAsyncReboot() throws Exception {
+    Configuration conf = new Configuration();
+    TestCallbackHandler callbackHandler = new TestCallbackHandler();
+    @SuppressWarnings("unchecked")
+    AMRMClient<ContainerRequest> client = mock(AMRMClientImpl.class);
+    
+    final AllocateResponse rebootResponse = createAllocateResponse(
+        new ArrayList<ContainerStatus>(), new ArrayList<Container>(), null);
+    rebootResponse.setAMCommand(AMCommand.AM_RESYNC);
+    when(client.allocate(anyFloat())).thenReturn(rebootResponse);
+    
+    AMRMClientAsync<ContainerRequest> asyncClient = 
+        AMRMClientAsync.createAMRMClientAsync(client, 20, callbackHandler);
+    asyncClient.init(conf);
+    asyncClient.start();
+    
+    synchronized (callbackHandler.notifier) {
+      asyncClient.registerApplicationMaster("localhost", 1234, null);
+      while(callbackHandler.reboot == false) {
+        try {
+          callbackHandler.notifier.wait();
+        } catch (InterruptedException e) {
+          e.printStackTrace();
+        }
+      }
+    }
+    
+    asyncClient.stop();
+    // stopping should have joined all threads and completed all callbacks
+    Assert.assertTrue(callbackHandler.callbackCount == 0);
+  }
+  
   @Test (timeout = 10000)
   public void testAMRMClientAsyncShutDown() throws Exception {
     Configuration conf = new Configuration();

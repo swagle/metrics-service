@@ -1310,44 +1310,33 @@ public class TestRMWebServicesApps extends JerseyTest {
           WebServicesTestUtils.getXmlString(element, "amContainerLogs"),
           WebServicesTestUtils.getXmlInt(element, "allocatedMB"),
           WebServicesTestUtils.getXmlInt(element, "allocatedVCores"),
-          WebServicesTestUtils.getXmlInt(element, "runningContainers"),
-          WebServicesTestUtils.getXmlInt(element, "preemptedResourceMB"),
-          WebServicesTestUtils.getXmlInt(element, "preemptedResourceVCores"),
-          WebServicesTestUtils.getXmlInt(element, "numNonAMContainerPreempted"),
-          WebServicesTestUtils.getXmlInt(element, "numAMContainerPreempted"));
+          WebServicesTestUtils.getXmlInt(element, "runningContainers"));
     }
   }
 
   public void verifyAppInfo(JSONObject info, RMApp app) throws JSONException,
       Exception {
 
-    // 28 because trackingUrl not assigned yet
-    assertEquals("incorrect number of elements", 24, info.length());
+    // 20 because trackingUrl not assigned yet
+    assertEquals("incorrect number of elements", 20, info.length());
 
     verifyAppInfoGeneric(app, info.getString("id"), info.getString("user"),
-        info.getString("name"), info.getString("applicationType"),
-        info.getString("queue"), info.getString("state"),
-        info.getString("finalStatus"), (float) info.getDouble("progress"),
-        info.getString("trackingUI"), info.getString("diagnostics"),
-        info.getLong("clusterId"), info.getLong("startedTime"),
-        info.getLong("finishedTime"), info.getLong("elapsedTime"),
-        info.getString("amHostHttpAddress"), info.getString("amContainerLogs"),
-        info.getInt("allocatedMB"), info.getInt("allocatedVCores"),
-        info.getInt("runningContainers"), 
-        info.getInt("preemptedResourceMB"),
-        info.getInt("preemptedResourceVCores"),
-        info.getInt("numNonAMContainerPreempted"),
-        info.getInt("numAMContainerPreempted"));
+      info.getString("name"), info.getString("applicationType"), info.getString("queue"),
+      info.getString("state"), info.getString("finalStatus"),
+      (float) info.getDouble("progress"), info.getString("trackingUI"),
+      info.getString("diagnostics"), info.getLong("clusterId"),
+      info.getLong("startedTime"), info.getLong("finishedTime"),
+      info.getLong("elapsedTime"), info.getString("amHostHttpAddress"),
+      info.getString("amContainerLogs"), info.getInt("allocatedMB"),
+      info.getInt("allocatedVCores"), info.getInt("runningContainers"));
   }
 
   public void verifyAppInfoGeneric(RMApp app, String id, String user,
-      String name, String applicationType, String queue, String state,
-      String finalStatus, float progress, String trackingUI,
-      String diagnostics, long clusterId, long startedTime, long finishedTime,
-      long elapsedTime, String amHostHttpAddress, String amContainerLogs,
-      int allocatedMB, int allocatedVCores, int numContainers,
-      int preemptedResourceMB, int preemptedResourceVCores,
-      int numNonAMContainerPreempted, int numAMContainerPreempted) throws JSONException,
+      String name, String applicationType, String queue, String state, String finalStatus,
+      float progress, String trackingUI, String diagnostics, long clusterId,
+      long startedTime, long finishedTime, long elapsedTime,
+      String amHostHttpAddress, String amContainerLogs, int allocatedMB,
+      int allocatedVCores, int numContainers) throws JSONException,
       Exception {
 
     WebServicesTestUtils.checkStringMatch("id", app.getApplicationId()
@@ -1382,18 +1371,6 @@ public class TestRMWebServicesApps extends JerseyTest {
     assertEquals("allocatedMB doesn't match", 1024, allocatedMB);
     assertEquals("allocatedVCores doesn't match", 1, allocatedVCores);
     assertEquals("numContainers doesn't match", 1, numContainers);
-    assertEquals("preemptedResourceMB doesn't match", app
-        .getRMAppMetrics().getResourcePreempted().getMemory(),
-        preemptedResourceMB);
-    assertEquals("preemptedResourceVCores doesn't match", app
-        .getRMAppMetrics().getResourcePreempted().getVirtualCores(),
-        preemptedResourceVCores);
-    assertEquals("numNonAMContainerPreempted doesn't match", app
-        .getRMAppMetrics().getNumNonAMContainersPreempted(),
-        numNonAMContainerPreempted);
-    assertEquals("numAMContainerPreempted doesn't match", app
-        .getRMAppMetrics().getNumAMContainersPreempted(),
-        numAMContainerPreempted);
   }
 
   @Test

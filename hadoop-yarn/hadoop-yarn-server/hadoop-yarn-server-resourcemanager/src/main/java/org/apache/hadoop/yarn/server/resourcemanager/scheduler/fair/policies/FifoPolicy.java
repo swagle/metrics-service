@@ -20,6 +20,7 @@ package org.apache.hadoop.yarn.server.resourcemanager.scheduler.fair.policies;
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.Iterator;
 
 import org.apache.hadoop.classification.InterfaceAudience.Private;
 import org.apache.hadoop.classification.InterfaceStability.Unstable;
@@ -85,18 +86,6 @@ public class FifoPolicy extends SchedulingPolicy {
       }
     }
     earliest.setFairShare(Resources.clone(totalResources));
-  }
-
-  @Override
-  public boolean checkIfUsageOverFairShare(Resource usage, Resource fairShare) {
-    throw new UnsupportedOperationException(
-        "FifoPolicy doesn't support checkIfUsageOverFairshare operation, " +
-            "as FifoPolicy only works for FSLeafQueue.");
-  }
-
-  @Override
-  public boolean checkIfAMResourceUsageOverLimit(Resource usage, Resource maxAMResource) {
-    return usage.getMemory() > maxAMResource.getMemory();
   }
 
   @Override

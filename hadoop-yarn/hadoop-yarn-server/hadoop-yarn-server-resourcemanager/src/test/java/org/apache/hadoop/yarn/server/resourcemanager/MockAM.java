@@ -23,7 +23,8 @@ import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.junit.Assert;
+import junit.framework.Assert;
+
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.yarn.api.ApplicationMasterProtocol;
@@ -33,7 +34,6 @@ import org.apache.hadoop.yarn.api.protocolrecords.FinishApplicationMasterRequest
 import org.apache.hadoop.yarn.api.protocolrecords.RegisterApplicationMasterRequest;
 import org.apache.hadoop.yarn.api.protocolrecords.RegisterApplicationMasterResponse;
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
-import org.apache.hadoop.yarn.api.records.Container;
 import org.apache.hadoop.yarn.api.records.ContainerId;
 import org.apache.hadoop.yarn.api.records.FinalApplicationStatus;
 import org.apache.hadoop.yarn.api.records.Priority;
@@ -197,29 +197,6 @@ public class MockAM {
     }
   }
 
-  public AllocateResponse allocate(AllocateRequest allocateRequest)
-            throws Exception {
-    final AllocateRequest req = allocateRequest;
-    req.setResponseId(++responseId);
-
-    UserGroupInformation ugi =
-        UserGroupInformation.createRemoteUser(attemptId.toString());
-    Token<AMRMTokenIdentifier> token =
-        context.getRMApps().get(attemptId.getApplicationId())
-            .getRMAppAttempt(attemptId).getAMRMToken();
-    ugi.addTokenIdentifier(token.decodeIdentifier());
-    try {
-      return ugi.doAs(new PrivilegedExceptionAction<AllocateResponse>() {
-        @Override
-        public AllocateResponse run() throws Exception {
-          return amRMProtocol.allocate(req);
-        }
-      });
-    } catch (UndeclaredThrowableException e) {
-      throw (Exception) e.getCause();
-    }
-  }
-
   public void unregisterAppAttempt() throws Exception {
     waitForState(RMAppAttemptState.RUNNING);
     final FinishApplicationMasterRequest req =
@@ -250,23 +227,5 @@ public class MockAM {
 
   public ApplicationAttemptId getApplicationAttemptId() {
     return this.attemptId;
-  }
-  
-  public List<Container> allocateAndWaitForContainers(int nContainer,
-      int memory, MockNM nm) throws Exception {
-    // AM request for containers
-    allocate("ANY", memory, nContainer, null);
-    // kick the scheduler
-    nm.nodeHeartbeat(true);
-    List<Container> conts =
-        allocate(new ArrayList<ResourceRequest>(), null)
-            .getAllocatedContainers();
-    while (conts.size() < nContainer) {
-      nm.nodeHeartbeat(true);
-      conts.addAll(allocate(new ArrayList<ResourceRequest>(),
-          new ArrayList<ContainerId>()).getAllocatedContainers());
-      Thread.sleep(500);
-    }
-    return conts;
   }
 }

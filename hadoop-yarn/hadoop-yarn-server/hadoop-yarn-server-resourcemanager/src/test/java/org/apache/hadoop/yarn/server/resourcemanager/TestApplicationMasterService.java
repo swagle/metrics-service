@@ -18,33 +18,26 @@
 
 package org.apache.hadoop.yarn.server.resourcemanager;
 
-import org.junit.Assert;
+import junit.framework.Assert;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.yarn.api.protocolrecords.AllocateResponse;
 import org.apache.hadoop.yarn.api.protocolrecords.FinishApplicationMasterRequest;
-
-import org.apache.hadoop.yarn.api.protocolrecords.impl.pb.AllocateRequestPBImpl;
-import org.apache.hadoop.yarn.api.records.*;
+import org.apache.hadoop.yarn.api.records.Container;
+import org.apache.hadoop.yarn.api.records.ContainerId;
+import org.apache.hadoop.yarn.api.records.FinalApplicationStatus;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
-import org.apache.hadoop.yarn.exceptions.ApplicationMasterNotRegisteredException;
+import org.apache.hadoop.yarn.exceptions.InvalidApplicationMasterRequestException;
 import org.apache.hadoop.yarn.exceptions.InvalidContainerReleaseException;
 import org.apache.hadoop.yarn.security.ContainerTokenIdentifier;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMApp;
-import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.*;
+import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttempt;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.ResourceScheduler;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.fifo.FifoScheduler;
-
 import org.apache.hadoop.yarn.server.utils.BuilderUtils;
 import org.junit.BeforeClass;
 import org.junit.Test;
-
-import java.util.ArrayList;
-import java.util.List;
-
-import static java.lang.Thread.sleep;
-import static org.mockito.Matchers.any;
 
 public class TestApplicationMasterService {
   private static final Log LOG = LogFactory.getLog(TestFifoScheduler.class);
@@ -83,7 +76,7 @@ public class TestApplicationMasterService {
     nm1.nodeHeartbeat(true);
     while (alloc1Response.getAllocatedContainers().size() < 1) {
       LOG.info("Waiting for containers to be created for app 1...");
-      sleep(1000);
+      Thread.sleep(1000);
       alloc1Response = am1.schedule();
     }
 
@@ -123,7 +116,7 @@ public class TestApplicationMasterService {
       nm1.nodeHeartbeat(true);
       while (alloc1Response.getAllocatedContainers().size() < 1) {
         LOG.info("Waiting for containers to be created for app 1...");
-        sleep(1000);
+        Thread.sleep(1000);
         alloc1Response = am1.schedule();
       }
       
@@ -155,72 +148,6 @@ public class TestApplicationMasterService {
       }
     }
   }
-
-  @Test(timeout=1200000)
-  public void testProgressFilter() throws Exception{
-    MockRM rm = new MockRM(conf);
-    rm.start();
-
-    // Register node1
-    MockNM nm1 = rm.registerNode("127.0.0.1:1234", 6 * GB);
-
-      // Submit an application
-    RMApp app1 = rm.submitApp(2048);
-
-    nm1.nodeHeartbeat(true);
-    RMAppAttempt attempt1 = app1.getCurrentAppAttempt();
-    MockAM am1 = rm.sendAMLaunched(attempt1.getAppAttemptId());
-    am1.registerAppAttempt();
-    am1.setAMRMProtocol(rm.getApplicationMasterService());
-
-    AllocateRequestPBImpl allocateRequest = new AllocateRequestPBImpl();
-    List<ContainerId> release = new ArrayList<ContainerId>();
-    List<ResourceRequest> ask = new ArrayList<ResourceRequest>();
-    allocateRequest.setReleaseList(release);
-    allocateRequest.setAskList(ask);
-
-    allocateRequest.setProgress(Float.POSITIVE_INFINITY);
-    am1.allocate(allocateRequest);
-    while(attempt1.getProgress()!=1){
-      LOG.info("Waiting for allocate event to be handled ...");
-      sleep(100);
-    }
-
-    allocateRequest.setProgress(Float.NaN);
-    am1.allocate(allocateRequest);
-    while(attempt1.getProgress()!=0){
-      LOG.info("Waiting for allocate event to be handled ...");
-      sleep(100);
-    }
-
-    allocateRequest.setProgress((float)9);
-    am1.allocate(allocateRequest);
-    while(attempt1.getProgress()!=1){
-      LOG.info("Waiting for allocate event to be handled ...");
-      sleep(100);
-    }
-
-    allocateRequest.setProgress(Float.NEGATIVE_INFINITY);
-    am1.allocate(allocateRequest);
-    while(attempt1.getProgress()!=0){
-      LOG.info("Waiting for allocate event to be handled ...");
-      sleep(100);
-    }
-
-    allocateRequest.setProgress((float)0.5);
-    am1.allocate(allocateRequest);
-    while(attempt1.getProgress()!=0.5){
-      LOG.info("Waiting for allocate event to be handled ...");
-      sleep(100);
-    }
-
-    allocateRequest.setProgress((float)-1);
-    am1.allocate(allocateRequest);
-    while(attempt1.getProgress()!=0){
-      LOG.info("Waiting for allocate event to be handled ...");
-      sleep(100);
-    }
-  }
   
   @Test(timeout=1200000)
   public void testFinishApplicationMasterBeforeRegistering() throws Exception {
@@ -243,17 +170,13 @@ public class TestApplicationMasterService {
       }
       Assert.assertNotNull(cause);
       Assert
-          .assertTrue(cause instanceof ApplicationMasterNotRegisteredException);
+          .assertTrue(cause instanceof InvalidApplicationMasterRequestException);
       Assert.assertNotNull(cause.getMessage());
       Assert
           .assertTrue(cause
               .getMessage()
               .contains(
                   "Application Master is trying to unregister before registering for:"));
-
-      am1.registerAppAttempt();
-
-      am1.unregisterAppAttempt(req, false);
     } finally {
       if (rm != null) {
         rm.stop();

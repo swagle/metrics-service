@@ -22,7 +22,6 @@ import java.nio.ByteBuffer;
 
 import org.apache.hadoop.classification.InterfaceAudience.Public;
 import org.apache.hadoop.classification.InterfaceStability.Evolving;
-import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.service.AbstractService;
 import org.apache.hadoop.yarn.api.ContainerManagementProtocol;
 import org.apache.hadoop.yarn.api.protocolrecords.StartContainersRequest;
@@ -39,19 +38,8 @@ import org.apache.hadoop.yarn.conf.YarnConfiguration;
 @Evolving
 public abstract class AuxiliaryService extends AbstractService {
 
-  private Path recoveryPath = null;
-
   protected AuxiliaryService(String name) {
     super(name);
-  }
-
-  /**
-   * Get the path specific to this auxiliary service to use for recovery.
-   *
-   * @return state storage path or null if recovery is not enabled
-   */
-  protected Path getRecoveryPath() {
-    return recoveryPath;
   }
 
   /**
@@ -114,13 +102,4 @@ public abstract class AuxiliaryService extends AbstractService {
   public void stopContainer(ContainerTerminationContext stopContainerContext) {
   }
 
-  /**
-   * Set the path for this auxiliary service to use for storing state
-   * that will be used during recovery.
-   *
-   * @param recoveryPath where recoverable state should be stored
-   */
-  public void setRecoveryPath(Path recoveryPath) {
-    this.recoveryPath = recoveryPath;
-  }
 }

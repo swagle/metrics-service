@@ -20,7 +20,6 @@ package org.apache.hadoop.yarn.server.resourcemanager.webapp;
 
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.util.Set;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -31,7 +30,6 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.apache.hadoop.http.HtmlQuoting;
 
-import com.google.common.collect.Sets;
 import com.google.inject.Injector;
 import com.sun.jersey.guice.spi.container.servlet.GuiceContainer;
 
@@ -43,10 +41,6 @@ public class RMWebAppFilter extends GuiceContainer {
    * 
    */
   private static final long serialVersionUID = 1L;
-
-  // define a set of URIs which do not need to do redirection
-  private static final Set<String> NON_REDIRECTED_URIS = Sets.newHashSet(
-      "/conf", "/stacks", "/logLevel", "/logs");
 
   @Inject
   public RMWebAppFilter(Injector injector) {
@@ -67,7 +61,8 @@ public class RMWebAppFilter extends GuiceContainer {
     RMWebApp rmWebApp = injector.getInstance(RMWebApp.class);
     rmWebApp.checkIfStandbyRM();
     if (rmWebApp.isStandby()
-        && shouldRedirect(rmWebApp, uri)) {
+        && !uri.equals("/" + rmWebApp.wsName() + "/v1/cluster/info")
+        && !uri.equals("/" + rmWebApp.name() + "/cluster")) {
       String redirectPath = rmWebApp.getRedirectPath() + uri;
 
       if (redirectPath != null && !redirectPath.isEmpty()) {
@@ -85,9 +80,4 @@ public class RMWebAppFilter extends GuiceContainer {
 
   }
 
-  private boolean shouldRedirect(RMWebApp rmWebApp, String uri) {
-    return !uri.equals("/" + rmWebApp.wsName() + "/v1/cluster/info")
-        && !uri.equals("/" + rmWebApp.name() + "/cluster")
-        && !NON_REDIRECTED_URIS.contains(uri);
-  }
 }

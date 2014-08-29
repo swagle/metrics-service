@@ -234,7 +234,8 @@ extends AMRMClientAsync<T> {
           while (true) {
             try {
               responseQueue.put(response);
-              if (response.getAMCommand() == AMCommand.AM_SHUTDOWN) {
+              if (response.getAMCommand() == AMCommand.AM_RESYNC
+                  || response.getAMCommand() == AMCommand.AM_SHUTDOWN) {
                 return;
               }
               break;
@@ -279,6 +280,7 @@ extends AMRMClientAsync<T> {
 
           if (response.getAMCommand() != null) {
             switch(response.getAMCommand()) {
+            case AM_RESYNC:
             case AM_SHUTDOWN:
               handler.onShutdownRequest();
               LOG.info("Shutdown requested. Stopping callback.");

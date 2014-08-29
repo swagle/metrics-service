@@ -70,7 +70,7 @@ public class FairSchedulerQueueInfo {
     queueName = queue.getName();
     schedulingPolicy = queue.getPolicy().getName();
     
-    clusterResources = new ResourceInfo(scheduler.getClusterResource());
+    clusterResources = new ResourceInfo(scheduler.getClusterCapacity());
     
     usedResources = new ResourceInfo(queue.getResourceUsage());
     fractionMemUsed = (float)usedResources.getMemory() /
@@ -81,7 +81,7 @@ public class FairSchedulerQueueInfo {
     maxResources = new ResourceInfo(queue.getMaxShare());
     maxResources = new ResourceInfo(
         Resources.componentwiseMin(queue.getMaxShare(),
-            scheduler.getClusterResource()));
+            scheduler.getClusterCapacity()));
     
     fractionMemFairShare = (float)fairResources.getMemory() / clusterResources.getMemory();
     fractionMemMinShare = (float)minResources.getMemory() / clusterResources.getMemory();

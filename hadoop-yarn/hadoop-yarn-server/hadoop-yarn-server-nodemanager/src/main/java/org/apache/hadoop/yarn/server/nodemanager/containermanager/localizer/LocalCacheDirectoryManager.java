@@ -26,8 +26,6 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
 
-import com.google.common.annotations.VisibleForTesting;
-
 /**
  * {@link LocalCacheDirectoryManager} is used for managing hierarchical
  * directories for local cache. It will allow to restrict the number of files in
@@ -101,57 +99,6 @@ public class LocalCacheDirectoryManager {
     }
   }
 
-  /**
-   * Increment the file count for a relative directory within the cache
-   * 
-   * @param relPath the relative path
-   */
-  public synchronized void incrementFileCountForPath(String relPath) {
-    relPath = relPath == null ? "" : relPath.trim();
-    Directory subDir = knownDirectories.get(relPath);
-    if (subDir == null) {
-      int dirnum = Directory.getDirectoryNumber(relPath);
-      totalSubDirectories = Math.max(dirnum, totalSubDirectories);
-      subDir = new Directory(dirnum);
-      nonFullDirectories.add(subDir);
-      knownDirectories.put(subDir.getRelativePath(), subDir);
-    }
-    if (subDir.incrementAndGetCount() >= perDirectoryFileLimit) {
-      nonFullDirectories.remove(subDir);
-    }
-  }
-
-  /**
-   * Given a path to a directory within a local cache tree return the
-   * root of the cache directory.
-   * 
-   * @param path the directory within a cache directory
-   * @return the local cache directory root or null if not found
-   */
-  public static Path getCacheDirectoryRoot(Path path) {
-    while (path != null) {
-      String name = path.getName();
-      if (name.length() != 1) {
-        return path;
-      }
-      int dirnum = DIRECTORIES_PER_LEVEL;
-      try {
-        dirnum = Integer.parseInt(name, DIRECTORIES_PER_LEVEL);
-      } catch (NumberFormatException e) {
-      }
-      if (dirnum >= DIRECTORIES_PER_LEVEL) {
-        return path;
-      }
-      path = path.getParent();
-    }
-    return path;
-  }
-
-  @VisibleForTesting
-  synchronized Directory getDirectory(String relPath) {
-    return knownDirectories.get(relPath);
-  }
-
   /*
    * It limits the number of files and sub directories in the directory to the
    * limit LocalCacheDirectoryManager#perDirectoryFileLimit.
@@ -161,9 +108,11 @@ public class LocalCacheDirectoryManager {
     private final String relativePath;
     private int fileCount;
 
-    static String getRelativePath(int directoryNo) {
-      String relativePath = "";
-      if (directoryNo > 0) {
+    public Directory(int directoryNo) {
+      fileCount = 0;
+      if (directoryNo == 0) {
+        relativePath = "";
+      } else {
         String tPath = Integer.toString(directoryNo - 1, DIRECTORIES_PER_LEVEL);
         StringBuffer sb = new StringBuffer();
         if (tPath.length() == 1) {
@@ -179,27 +128,6 @@ public class LocalCacheDirectoryManager {
         }
         relativePath = sb.toString();
       }
-      return relativePath;
-    }
-
-    static int getDirectoryNumber(String relativePath) {
-      String numStr = relativePath.replace("/", "");
-      if (relativePath.isEmpty()) {
-        return 0;
-      }
-      if (numStr.length() > 1) {
-        // undo step from getRelativePath() to reuse 0th sub directory
-        String firstChar = Integer.toString(
-            Integer.parseInt(numStr.substring(0, 1),
-                DIRECTORIES_PER_LEVEL) + 1, DIRECTORIES_PER_LEVEL);
-        numStr = firstChar + numStr.substring(1);
-      }
-      return Integer.parseInt(numStr, DIRECTORIES_PER_LEVEL) + 1;
-    }
-
-    public Directory(int directoryNo) {
-      fileCount = 0;
-      relativePath = getRelativePath(directoryNo);
     }
 
     public int incrementAndGetCount() {

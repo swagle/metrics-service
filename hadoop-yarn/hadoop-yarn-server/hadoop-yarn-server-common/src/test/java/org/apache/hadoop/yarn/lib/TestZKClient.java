@@ -26,7 +26,7 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 
-import org.junit.Assert;
+import junit.framework.Assert;
 
 import org.apache.hadoop.yarn.lib.ZKClient;
 import org.apache.zookeeper.server.NIOServerCnxnFactory;

@@ -27,7 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
-import org.junit.Assert;
+import junit.framework.Assert;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
@@ -165,7 +165,7 @@ public class TestRMApplicationHistoryWriter {
     when(container.getAllocatedResource()).thenReturn(
       Resource.newInstance(-1, -1));
     when(container.getAllocatedPriority()).thenReturn(Priority.UNDEFINED);
-    when(container.getCreationTime()).thenReturn(0L);
+    when(container.getStartTime()).thenReturn(0L);
     when(container.getFinishTime()).thenReturn(1L);
     when(container.getDiagnosticsInfo()).thenReturn("test diagnostics info");
     when(container.getLogURL()).thenReturn("test log url");
@@ -281,7 +281,7 @@ public class TestRMApplicationHistoryWriter {
     Assert.assertEquals(Resource.newInstance(-1, -1),
       containerHD.getAllocatedResource());
     Assert.assertEquals(Priority.UNDEFINED, containerHD.getPriority());
-    Assert.assertEquals(0L, container.getCreationTime());
+    Assert.assertEquals(0L, container.getStartTime());
 
     writer.containerFinished(container);
     for (int i = 0; i < MAX_RETRIES; ++i) {
@@ -420,7 +420,7 @@ public class TestRMApplicationHistoryWriter {
     int waitCount = 0;
     int allocatedSize = allocated.size();
     while (allocatedSize < request && waitCount++ < 200) {
-      Thread.sleep(300);
+      Thread.sleep(100);
       allocated =
           am.allocate(new ArrayList<ResourceRequest>(),
             new ArrayList<ContainerId>()).getAllocatedContainers();
@@ -439,7 +439,7 @@ public class TestRMApplicationHistoryWriter {
     int cleanedSize = cleaned.size();
     waitCount = 0;
     while (cleanedSize < allocatedSize && waitCount++ < 200) {
-      Thread.sleep(300);
+      Thread.sleep(100);
       resp = nm.nodeHeartbeat(true);
       cleaned = resp.getContainersToCleanup();
       cleanedSize += cleaned.size();

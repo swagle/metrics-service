@@ -145,7 +145,6 @@ case $startStop in
       else
         echo no $command to stop
       fi
-      rm -f $pid
     else
       echo no $command to stop
     fi

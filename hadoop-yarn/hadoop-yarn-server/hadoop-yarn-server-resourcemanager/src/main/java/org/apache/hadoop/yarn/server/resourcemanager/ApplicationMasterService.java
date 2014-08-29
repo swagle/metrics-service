@@ -65,7 +65,6 @@ import org.apache.hadoop.yarn.api.records.ResourceBlacklistRequest;
 import org.apache.hadoop.yarn.api.records.ResourceRequest;
 import org.apache.hadoop.yarn.api.records.StrictPreemptionContract;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
-import org.apache.hadoop.yarn.exceptions.ApplicationMasterNotRegisteredException;
 import org.apache.hadoop.yarn.exceptions.InvalidApplicationMasterRequestException;
 import org.apache.hadoop.yarn.exceptions.InvalidContainerReleaseException;
 import org.apache.hadoop.yarn.exceptions.InvalidResourceBlacklistRequestException;
@@ -108,15 +107,12 @@ public class ApplicationMasterService extends AbstractService implements
       new ConcurrentHashMap<ApplicationAttemptId, AllocateResponseLock>();
   private final AllocateResponse resync =
       recordFactory.newRecordInstance(AllocateResponse.class);
-  private final AllocateResponse shutdown =
-      recordFactory.newRecordInstance(AllocateResponse.class);
   private final RMContext rmContext;
 
   public ApplicationMasterService(RMContext rmContext, YarnScheduler scheduler) {
     super(ApplicationMasterService.class.getName());
     this.amLivelinessMonitor = rmContext.getAMLivelinessMonitor();
     this.rScheduler = scheduler;
-    this.shutdown.setAMCommand(AMCommand.AM_SHUTDOWN);
     this.resync.setAMCommand(AMCommand.AM_RESYNC);
     this.rmContext = rmContext;
   }
@@ -127,7 +123,6 @@ public class ApplicationMasterService extends AbstractService implements
     YarnRPC rpc = YarnRPC.create(conf);
 
     InetSocketAddress masterServiceAddress = conf.getSocketAddr(
-        YarnConfiguration.RM_BIND_HOST,
         YarnConfiguration.RM_SCHEDULER_ADDRESS,
         YarnConfiguration.DEFAULT_RM_SCHEDULER_ADDRESS,
         YarnConfiguration.DEFAULT_RM_SCHEDULER_PORT);
@@ -160,9 +155,7 @@ public class ApplicationMasterService extends AbstractService implements
     
     this.server.start();
     this.bindAddress =
-        conf.updateConnectAddr(YarnConfiguration.RM_BIND_HOST,
-                               YarnConfiguration.RM_SCHEDULER_ADDRESS,
-                               YarnConfiguration.DEFAULT_RM_SCHEDULER_ADDRESS,
+        conf.updateConnectAddr(YarnConfiguration.RM_SCHEDULER_ADDRESS,
                                server.getListenerAddress());
     super.serviceStart();
   }
@@ -305,12 +298,9 @@ public class ApplicationMasterService extends AbstractService implements
         List<NMToken> nmTokens = new ArrayList<NMToken>();
         for (Container container : transferredContainers) {
           try {
-            NMToken token = rmContext.getNMTokenSecretManager()
-                .createAndGetNMToken(app.getUser(), applicationAttemptId,
-                    container);
-            if (null != token) {
-              nmTokens.add(token);
-            }
+            nmTokens.add(rmContext.getNMTokenSecretManager()
+              .createAndGetNMToken(app.getUser(), applicationAttemptId,
+                container));
           } catch (IllegalArgumentException e) {
             // if it's a DNS issue, throw UnknowHostException directly and that
             // will be automatically retried by RMProxy in RPC layer.
@@ -353,9 +343,9 @@ public class ApplicationMasterService extends AbstractService implements
             AuditConstants.UNREGISTER_AM, "", "ApplicationMasterService",
             message, applicationAttemptId.getApplicationId(),
             applicationAttemptId);
-        throw new ApplicationMasterNotRegisteredException(message);
+        throw new InvalidApplicationMasterRequestException(message);
       }
-
+      
       this.amLivelinessMonitor.receivedPing(applicationAttemptId);
 
       RMApp rmApp =
@@ -416,23 +406,22 @@ public class ApplicationMasterService extends AbstractService implements
     AllocateResponseLock lock = responseMap.get(appAttemptId);
     if (lock == null) {
       LOG.error("AppAttemptId doesnt exist in cache " + appAttemptId);
-      return shutdown;
+      return resync;
     }
     synchronized (lock) {
       AllocateResponse lastResponse = lock.getAllocateResponse();
       if (!hasApplicationMasterRegistered(appAttemptId)) {
         String message =
-            "Application Master is not registered for known application: "
-                + appAttemptId.getApplicationId()
-                + ". Let AM resync.";
-        LOG.info(message);
+            "Application Master is trying to allocate before registering for: "
+                + appAttemptId.getApplicationId();
+        LOG.error(message);
         RMAuditLogger.logFailure(
             this.rmContext.getRMApps().get(appAttemptId.getApplicationId())
                 .getUser(), AuditConstants.REGISTER_AM, "",
             "ApplicationMasterService", message,
             appAttemptId.getApplicationId(),
             appAttemptId);
-        return resync;
+        throw new InvalidApplicationMasterRequestException(message);
       }
 
       if ((request.getResponseId() + 1) == lastResponse.getResponseId()) {
@@ -445,15 +434,6 @@ public class ApplicationMasterService extends AbstractService implements
         // and
         // get an exception. Might as well throw an exception here.
         return resync;
-      }
-
-      //filter illegal progress values
-      float filteredProgress = request.getProgress();
-      if (Float.isNaN(filteredProgress) || filteredProgress == Float.NEGATIVE_INFINITY
-        || filteredProgress < 0) {
-         request.setProgress(0);
-      } else if (filteredProgress > 1 || filteredProgress == Float.POSITIVE_INFINITY) {
-        request.setProgress(1);
       }
 
       // Send the status update to the appAttempt.

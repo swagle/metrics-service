@@ -29,7 +29,6 @@ import org.apache.hadoop.yarn.api.records.ContainerStatus;
 import org.apache.hadoop.yarn.api.records.Resource;
 import org.apache.hadoop.yarn.event.EventHandler;
 import org.apache.hadoop.yarn.security.ContainerTokenIdentifier;
-import org.apache.hadoop.yarn.server.api.protocolrecords.NMContainerStatus;
 
 public interface Container extends EventHandler<ContainerEvent> {
 
@@ -40,7 +39,7 @@ public interface Container extends EventHandler<ContainerEvent> {
   ContainerTokenIdentifier getContainerTokenIdentifier();
 
   String getUser();
-  
+
   ContainerState getContainerState();
 
   ContainerLaunchContext getLaunchContext();
@@ -50,8 +49,6 @@ public interface Container extends EventHandler<ContainerEvent> {
   Map<Path,List<String>> getLocalizedResources();
 
   ContainerStatus cloneAndGetContainerStatus();
-
-  NMContainerStatus getNMContainerStatus();
 
   String toString();
 

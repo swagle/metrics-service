@@ -36,8 +36,7 @@ import java.net.InetSocketAddress;
 import java.security.PrivilegedAction;
 import java.security.PrivilegedExceptionAction;
 
-import org.apache.hadoop.net.NetUtils;
-import org.junit.Assert;
+import junit.framework.Assert;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -236,8 +235,8 @@ public class TestClientRMTokens {
   @Test
   public void testShortCircuitRenewCancel()
       throws IOException, InterruptedException {
-    InetSocketAddress addr = NetUtils.createSocketAddr(
-        InetAddress.getLocalHost().getHostName(), 123, null);
+    InetSocketAddress addr =
+        new InetSocketAddress(InetAddress.getLocalHost(), 123);
     checkShortCircuitRenewCancel(addr, addr, true);
   }
 
@@ -245,19 +244,17 @@ public class TestClientRMTokens {
   public void testShortCircuitRenewCancelWildcardAddress()
       throws IOException, InterruptedException {
     InetSocketAddress rmAddr = new InetSocketAddress(123);
-    InetSocketAddress serviceAddr = NetUtils.createSocketAddr(
-        InetAddress.getLocalHost().getHostName(), rmAddr.getPort(), null);
     checkShortCircuitRenewCancel(
         rmAddr,
-        serviceAddr,
+        new InetSocketAddress(InetAddress.getLocalHost(), rmAddr.getPort()),
         true);
   }
 
   @Test
   public void testShortCircuitRenewCancelSameHostDifferentPort()
       throws IOException, InterruptedException {
-    InetSocketAddress rmAddr = NetUtils.createSocketAddr(
-        InetAddress.getLocalHost().getHostName(), 123, null);
+    InetSocketAddress rmAddr =
+        new InetSocketAddress(InetAddress.getLocalHost(), 123);    
     checkShortCircuitRenewCancel(
         rmAddr,
         new InetSocketAddress(rmAddr.getAddress(), rmAddr.getPort()+1),
@@ -267,8 +264,8 @@ public class TestClientRMTokens {
   @Test
   public void testShortCircuitRenewCancelDifferentHostSamePort()
       throws IOException, InterruptedException {
-    InetSocketAddress rmAddr = NetUtils.createSocketAddr(
-        InetAddress.getLocalHost().getHostName(), 123, null);
+    InetSocketAddress rmAddr =
+        new InetSocketAddress(InetAddress.getLocalHost(), 123);    
     checkShortCircuitRenewCancel(
         rmAddr,
         new InetSocketAddress("1.1.1.1", rmAddr.getPort()),
@@ -278,8 +275,8 @@ public class TestClientRMTokens {
   @Test
   public void testShortCircuitRenewCancelDifferentHostDifferentPort()
       throws IOException, InterruptedException {
-    InetSocketAddress rmAddr = NetUtils.createSocketAddr(
-        InetAddress.getLocalHost().getHostName(), 123, null);
+    InetSocketAddress rmAddr =
+        new InetSocketAddress(InetAddress.getLocalHost(), 123);    
     checkShortCircuitRenewCancel(
         rmAddr,
         new InetSocketAddress("1.1.1.1", rmAddr.getPort()+1),

@@ -23,21 +23,13 @@ import org.apache.hadoop.yarn.api.records.ContainerId;
 public class ContainerKillEvent extends ContainerEvent {
 
   private final String diagnostic;
-  private final int exitStatus;
 
-  public ContainerKillEvent(ContainerId cID,
-      int exitStatus, String diagnostic) {
+  public ContainerKillEvent(ContainerId cID, String diagnostic) {
     super(cID, ContainerEventType.KILL_CONTAINER);
-    this.exitStatus = exitStatus;
     this.diagnostic = diagnostic;
   }
 
   public String getDiagnostic() {
     return this.diagnostic;
   }
-
-  public int getContainerExitStatus() {
-    return this.exitStatus;
-  }
-
 }

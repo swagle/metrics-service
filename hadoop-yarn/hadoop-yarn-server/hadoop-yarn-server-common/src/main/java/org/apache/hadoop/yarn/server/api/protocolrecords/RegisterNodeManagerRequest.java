@@ -20,17 +20,16 @@ package org.apache.hadoop.yarn.server.api.protocolrecords;
 
 import java.util.List;
 
-import org.apache.hadoop.yarn.api.records.ApplicationId;
+import org.apache.hadoop.yarn.api.records.ContainerStatus;
 import org.apache.hadoop.yarn.api.records.NodeId;
 import org.apache.hadoop.yarn.api.records.Resource;
 import org.apache.hadoop.yarn.util.Records;
 
 public abstract class RegisterNodeManagerRequest {
-
+  
   public static RegisterNodeManagerRequest newInstance(NodeId nodeId,
       int httpPort, Resource resource, String nodeManagerVersionId,
-      List<NMContainerStatus> containerStatuses,
-      List<ApplicationId> runningApplications) {
+      List<ContainerStatus> containerStatuses) {
     RegisterNodeManagerRequest request =
         Records.newRecord(RegisterNodeManagerRequest.class);
     request.setHttpPort(httpPort);
@@ -38,7 +37,6 @@ public abstract class RegisterNodeManagerRequest {
     request.setNodeId(nodeId);
     request.setNMVersion(nodeManagerVersionId);
     request.setContainerStatuses(containerStatuses);
-    request.setRunningApplications(runningApplications);
     return request;
   }
   
@@ -46,32 +44,11 @@ public abstract class RegisterNodeManagerRequest {
   public abstract int getHttpPort();
   public abstract Resource getResource();
   public abstract String getNMVersion();
-  public abstract List<NMContainerStatus> getNMContainerStatuses();
-  
-  /**
-   * We introduce this here because currently YARN RM doesn't persist nodes info
-   * for application running. When RM restart happened, we cannot determinate if
-   * a node should do application cleanup (like log-aggregation, status update,
-   * etc.) or not. <p/>
-   * When we have this running application list in node manager register
-   * request, we can recover nodes info for running applications. And then we
-   * can take actions accordingly
-   * 
-   * @return running application list in this node
-   */
-  public abstract List<ApplicationId> getRunningApplications();
+  public abstract List<ContainerStatus> getContainerStatuses();
   
   public abstract void setNodeId(NodeId nodeId);
   public abstract void setHttpPort(int port);
   public abstract void setResource(Resource resource);
   public abstract void setNMVersion(String version);
-  public abstract void setContainerStatuses(
-      List<NMContainerStatus> containerStatuses);
-  
-  /**
-   * Setter for {@link RegisterNodeManagerRequest#getRunningApplications()}
-   * @param runningApplications running application in this node
-   */
-  public abstract void setRunningApplications(
-      List<ApplicationId> runningApplications);
+  public abstract void setContainerStatuses(List<ContainerStatus> containerStatuses);
 }

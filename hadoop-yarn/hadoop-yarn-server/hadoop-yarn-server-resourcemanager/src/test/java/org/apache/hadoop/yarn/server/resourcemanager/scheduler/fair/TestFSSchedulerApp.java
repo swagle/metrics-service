@@ -23,7 +23,6 @@ import static org.junit.Assert.assertEquals;
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
 import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.api.records.Priority;
-import org.apache.hadoop.yarn.server.resourcemanager.RMContext;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.NodeType;
 import org.apache.hadoop.yarn.util.Clock;
 import org.junit.Test;
@@ -60,11 +59,8 @@ public class TestFSSchedulerApp {
     double rackLocalityThreshold = .6;
 
     ApplicationAttemptId applicationAttemptId = createAppAttemptId(1, 1);
-    RMContext rmContext = Mockito.mock(RMContext.class);
-    Mockito.when(rmContext.getEpoch()).thenReturn(0);
     FSSchedulerApp schedulerApp =
-        new FSSchedulerApp(applicationAttemptId, "user1", queue , null,
-            rmContext);
+        new FSSchedulerApp(applicationAttemptId, "user1", queue , null, null);
 
     // Default level should be node-local
     assertEquals(NodeType.NODE_LOCAL, schedulerApp.getAllowedLocalityLevel(
@@ -122,12 +118,10 @@ public class TestFSSchedulerApp {
     long nodeLocalityDelayMs = 5 * 1000L;    // 5 seconds
     long rackLocalityDelayMs = 6 * 1000L;    // 6 seconds
 
-    RMContext rmContext = Mockito.mock(RMContext.class);
-    Mockito.when(rmContext.getEpoch()).thenReturn(0);
     ApplicationAttemptId applicationAttemptId = createAppAttemptId(1, 1);
     FSSchedulerApp schedulerApp =
             new FSSchedulerApp(applicationAttemptId, "user1", queue,
-                    null, rmContext);
+                    null, null);
     AppSchedulable appSchedulable = Mockito.mock(AppSchedulable.class);
     long startTime = clock.getTime();
     Mockito.when(appSchedulable.getStartTime()).thenReturn(startTime);
@@ -179,12 +173,9 @@ public class TestFSSchedulerApp {
     Priority prio = Mockito.mock(Priority.class);
     Mockito.when(prio.getPriority()).thenReturn(1);
 
-    RMContext rmContext = Mockito.mock(RMContext.class);
-    Mockito.when(rmContext.getEpoch()).thenReturn(0);
     ApplicationAttemptId applicationAttemptId = createAppAttemptId(1, 1);
     FSSchedulerApp schedulerApp =
-        new FSSchedulerApp(applicationAttemptId, "user1", queue , null,
-            rmContext);
+        new FSSchedulerApp(applicationAttemptId, "user1", queue , null, null);
     assertEquals(NodeType.OFF_SWITCH, schedulerApp.getAllowedLocalityLevel(
         prio, 10, -1.0, -1.0));
   }

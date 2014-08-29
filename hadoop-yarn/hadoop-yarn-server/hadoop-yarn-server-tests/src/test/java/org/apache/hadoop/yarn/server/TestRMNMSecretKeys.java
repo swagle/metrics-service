@@ -20,7 +20,7 @@ package org.apache.hadoop.yarn.server;
 
 import java.io.IOException;
 
-import org.junit.Assert;
+import junit.framework.Assert;
 
 import org.apache.hadoop.fs.CommonConfigurationKeysPublic;
 import org.apache.hadoop.security.UserGroupInformation;

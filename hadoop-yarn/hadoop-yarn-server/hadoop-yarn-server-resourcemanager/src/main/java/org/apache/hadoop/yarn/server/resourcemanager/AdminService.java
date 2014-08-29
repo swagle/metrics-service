@@ -26,7 +26,6 @@ import java.util.Set;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.CommonConfigurationKeysPublic;
 import org.apache.hadoop.ha.HAServiceProtocol;
@@ -87,12 +86,9 @@ public class AdminService extends CompositeService implements
   private String rmId;
 
   private boolean autoFailoverEnabled;
-  private EmbeddedElectorService embeddedElector;
 
   private Server server;
-
-  // Address to use for binding. May be a wildcard address.
-  private InetSocketAddress masterServiceBindAddress;
+  private InetSocketAddress masterServiceAddress;
   private AccessControlList adminAcl;
 
   private final RecordFactory recordFactory = 
@@ -105,23 +101,20 @@ public class AdminService extends CompositeService implements
   }
 
   @Override
-  public void serviceInit(Configuration conf) throws Exception {
+  public synchronized void serviceInit(Configuration conf) throws Exception {
     if (rmContext.isHAEnabled()) {
       autoFailoverEnabled = HAUtil.isAutomaticFailoverEnabled(conf);
       if (autoFailoverEnabled) {
         if (HAUtil.isAutomaticFailoverEmbedded(conf)) {
-          embeddedElector = createEmbeddedElectorService();
-          addIfService(embeddedElector);
+          addIfService(createEmbeddedElectorService());
         }
       }
     }
 
-    masterServiceBindAddress = conf.getSocketAddr(
-        YarnConfiguration.RM_BIND_HOST,
+    masterServiceAddress = conf.getSocketAddr(
         YarnConfiguration.RM_ADMIN_ADDRESS,
         YarnConfiguration.DEFAULT_RM_ADMIN_ADDRESS,
         YarnConfiguration.DEFAULT_RM_ADMIN_PORT);
-
     adminAcl = new AccessControlList(conf.get(
         YarnConfiguration.YARN_ADMIN_ACL,
         YarnConfiguration.DEFAULT_YARN_ADMIN_ACL));
@@ -130,13 +123,13 @@ public class AdminService extends CompositeService implements
   }
 
   @Override
-  protected void serviceStart() throws Exception {
+  protected synchronized void serviceStart() throws Exception {
     startServer();
     super.serviceStart();
   }
 
   @Override
-  protected void serviceStop() throws Exception {
+  protected synchronized void serviceStop() throws Exception {
     stopServer();
     super.serviceStop();
   }
@@ -145,7 +138,7 @@ public class AdminService extends CompositeService implements
     Configuration conf = getConfig();
     YarnRPC rpc = YarnRPC.create(conf);
     this.server = (Server) rpc.getServer(
-        ResourceManagerAdministrationProtocol.class, this, masterServiceBindAddress,
+        ResourceManagerAdministrationProtocol.class, this, masterServiceAddress,
         conf, null,
         conf.getInt(YarnConfiguration.RM_ADMIN_CLIENT_THREAD_COUNT,
             YarnConfiguration.DEFAULT_RM_ADMIN_CLIENT_THREAD_COUNT));
@@ -174,10 +167,8 @@ public class AdminService extends CompositeService implements
     }
 
     this.server.start();
-    conf.updateConnectAddr(YarnConfiguration.RM_BIND_HOST,
-                           YarnConfiguration.RM_ADMIN_ADDRESS,
-                           YarnConfiguration.DEFAULT_RM_ADMIN_ADDRESS,
-                           server.getListenerAddress());
+    conf.updateConnectAddr(YarnConfiguration.RM_ADMIN_ADDRESS,
+        server.getListenerAddress());
   }
 
   protected void stopServer() throws Exception {
@@ -188,13 +179,6 @@ public class AdminService extends CompositeService implements
 
   protected EmbeddedElectorService createEmbeddedElectorService() {
     return new EmbeddedElectorService(rmContext);
-  }
-
-  @InterfaceAudience.Private
-  void resetLeaderElection() {
-    if (embeddedElector != null) {
-      embeddedElector.resetLeaderElection();
-    }
   }
 
   private UserGroupInformation checkAccess(String method) throws IOException {

@@ -25,6 +25,7 @@ public class FooterBlock extends HtmlBlock {
 
   @Override protected void render(Block html) {
     html.
-      div("#footer.ui-widget")._();
+      div("#footer.ui-widget").
+        a("http://hadoop.apache.org/", "About Apache Hadoop")._();
   }
 }

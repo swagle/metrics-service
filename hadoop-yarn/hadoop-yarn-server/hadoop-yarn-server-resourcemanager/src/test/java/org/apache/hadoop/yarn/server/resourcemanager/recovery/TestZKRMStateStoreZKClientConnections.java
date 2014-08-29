@@ -41,7 +41,6 @@ import java.security.NoSuchAlgorithmException;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -49,7 +48,6 @@ public class TestZKRMStateStoreZKClientConnections extends
     ClientBaseWithFixes {
 
   private static final int ZK_OP_WAIT_TIME = 3000;
-  private static final int ZK_TIMEOUT_MS = 1000;
   private Log LOG =
       LogFactory.getLog(TestZKRMStateStoreZKClientConnections.class);
 
@@ -86,7 +84,7 @@ public class TestZKRMStateStoreZKClientConnections extends
       @Override
       public ZooKeeper getNewZooKeeper()
           throws IOException, InterruptedException {
-        return createClient(watcher, hostPort, ZK_TIMEOUT_MS);
+        return createClient(watcher, hostPort, 100);
       }
 
       @Override
@@ -138,7 +136,7 @@ public class TestZKRMStateStoreZKClientConnections extends
     TestZKClient zkClientTester = new TestZKClient();
     final String path = "/test";
     YarnConfiguration conf = new YarnConfiguration();
-    conf.setInt(YarnConfiguration.RM_ZK_TIMEOUT_MS, ZK_TIMEOUT_MS);
+    conf.setInt(YarnConfiguration.RM_ZK_TIMEOUT_MS, 1000);
     conf.setLong(YarnConfiguration.RM_ZK_RETRY_INTERVAL_MS, 100);
     final ZKRMStateStore store =
         (ZKRMStateStore) zkClientTester.getRMStateStore(conf);
@@ -171,7 +169,7 @@ public class TestZKRMStateStoreZKClientConnections extends
     TestZKClient zkClientTester = new TestZKClient();
     String path = "/test";
     YarnConfiguration conf = new YarnConfiguration();
-    conf.setInt(YarnConfiguration.RM_ZK_TIMEOUT_MS, ZK_TIMEOUT_MS);
+    conf.setInt(YarnConfiguration.RM_ZK_TIMEOUT_MS, 100);
     ZKRMStateStore store =
         (ZKRMStateStore) zkClientTester.getRMStateStore(conf);
     TestDispatcher dispatcher = new TestDispatcher();
@@ -204,7 +202,7 @@ public class TestZKRMStateStoreZKClientConnections extends
       LOG.error(error, e);
       fail(error);
     }
-    assertEquals("newBytes", new String(ret));
+    Assert.assertEquals("newBytes", new String(ret));
   }
 
   @Test(timeout = 20000)
@@ -213,7 +211,7 @@ public class TestZKRMStateStoreZKClientConnections extends
     TestZKClient zkClientTester = new TestZKClient();
     String path = "/test";
     YarnConfiguration conf = new YarnConfiguration();
-    conf.setInt(YarnConfiguration.RM_ZK_TIMEOUT_MS, ZK_TIMEOUT_MS);
+    conf.setInt(YarnConfiguration.RM_ZK_TIMEOUT_MS, 100);
     ZKRMStateStore store =
         (ZKRMStateStore) zkClientTester.getRMStateStore(conf);
     TestDispatcher dispatcher = new TestDispatcher();
@@ -233,7 +231,7 @@ public class TestZKRMStateStoreZKClientConnections extends
 
     try {
       byte[] ret = store.getDataWithRetries(path, false);
-      assertEquals("bytes", new String(ret));
+      Assert.assertEquals("bytes", new String(ret));
     } catch (Exception e) {
       String error = "New session creation failed";
       LOG.error(error, e);
@@ -276,30 +274,10 @@ public class TestZKRMStateStoreZKClientConnections extends
     TestZKClient zkClientTester = new TestZKClient();
     YarnConfiguration conf = new YarnConfiguration();
     conf.setInt(YarnConfiguration.RM_ZK_NUM_RETRIES, 1);
-    conf.setInt(YarnConfiguration.RM_ZK_TIMEOUT_MS, ZK_TIMEOUT_MS);
+    conf.setInt(YarnConfiguration.RM_ZK_TIMEOUT_MS, 100);
     conf.set(YarnConfiguration.RM_ZK_ACL, TEST_ACL);
     conf.set(YarnConfiguration.RM_ZK_AUTH, TEST_AUTH_GOOD);
 
     zkClientTester.getRMStateStore(conf);
-  }
-
-  @Test
-  public void testZKRetryInterval() throws Exception {
-    TestZKClient zkClientTester = new TestZKClient();
-    YarnConfiguration conf = new YarnConfiguration();
-
-    ZKRMStateStore store =
-        (ZKRMStateStore) zkClientTester.getRMStateStore(conf);
-    assertEquals(YarnConfiguration.DEFAULT_RM_ZK_RETRY_INTERVAL_MS,
-        store.zkRetryInterval);
-    store.stop();
-
-    conf.setBoolean(YarnConfiguration.RM_HA_ENABLED, true);
-    store =
-        (ZKRMStateStore) zkClientTester.getRMStateStore(conf);
-    assertEquals(YarnConfiguration.DEFAULT_RM_ZK_TIMEOUT_MS /
-            YarnConfiguration.DEFAULT_ZK_RM_NUM_RETRIES,
-        store.zkRetryInterval);
-    store.stop();
   }
 }

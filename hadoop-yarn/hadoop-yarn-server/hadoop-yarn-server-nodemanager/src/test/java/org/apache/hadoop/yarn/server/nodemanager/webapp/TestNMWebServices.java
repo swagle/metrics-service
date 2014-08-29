@@ -31,7 +31,7 @@ import javax.ws.rs.core.MediaType;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 
-import org.junit.Assert;
+import junit.framework.Assert;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileUtil;
@@ -107,8 +107,7 @@ public class TestNMWebServices extends JerseyTest {
       healthChecker.init(conf);
       dirsHandler = healthChecker.getDiskHandler();
       aclsManager = new ApplicationACLsManager(conf);
-      nmContext = new NodeManager.NMContext(null, null, dirsHandler,
-          aclsManager, null);
+      nmContext = new NodeManager.NMContext(null, null, dirsHandler, aclsManager);
       NodeId nodeId = NodeId.newInstance("testhost.foo.com", 8042);
       ((NodeManager.NMContext)nmContext).setNodeId(nodeId);
       resourceView = new ResourceView() {
@@ -122,10 +121,6 @@ public class TestNMWebServices extends JerseyTest {
         public long getPmemAllocatedForContainers() {
           // 16G in bytes
           return new Long("17179869184");
-        }
-        @Override
-        public long getVCoresAllocatedForContainers() {
-          return new Long("4000");
         }
         @Override
         public boolean isVmemCheckEnabled() {
@@ -379,8 +374,6 @@ public class TestNMWebServices extends JerseyTest {
               "totalVmemAllocatedContainersMB"),
           WebServicesTestUtils.getXmlLong(element,
               "totalPmemAllocatedContainersMB"),
-          WebServicesTestUtils.getXmlLong(element,
-              "totalVCoresAllocatedContainers"),
           WebServicesTestUtils.getXmlBoolean(element, "vmemCheckEnabled"),
           WebServicesTestUtils.getXmlBoolean(element, "pmemCheckEnabled"),
           WebServicesTestUtils.getXmlLong(element, "lastNodeUpdateTime"),
@@ -399,11 +392,10 @@ public class TestNMWebServices extends JerseyTest {
   public void verifyNodeInfo(JSONObject json) throws JSONException, Exception {
     assertEquals("incorrect number of elements", 1, json.length());
     JSONObject info = json.getJSONObject("nodeInfo");
-    assertEquals("incorrect number of elements", 16, info.length());
+    assertEquals("incorrect number of elements", 15, info.length());
     verifyNodeInfoGeneric(info.getString("id"), info.getString("healthReport"),
         info.getLong("totalVmemAllocatedContainersMB"),
         info.getLong("totalPmemAllocatedContainersMB"),
-        info.getLong("totalVCoresAllocatedContainers"),
         info.getBoolean("vmemCheckEnabled"),
         info.getBoolean("pmemCheckEnabled"),
         info.getLong("lastNodeUpdateTime"), info.getBoolean("nodeHealthy"),
@@ -417,7 +409,6 @@ public class TestNMWebServices extends JerseyTest {
 
   public void verifyNodeInfoGeneric(String id, String healthReport,
       long totalVmemAllocatedContainersMB, long totalPmemAllocatedContainersMB,
-      long totalVCoresAllocatedContainers,
       boolean vmemCheckEnabled, boolean pmemCheckEnabled,
       long lastNodeUpdateTime, Boolean nodeHealthy, String nodeHostName,
       String hadoopVersionBuiltOn, String hadoopBuildVersion,
@@ -431,8 +422,6 @@ public class TestNMWebServices extends JerseyTest {
         totalVmemAllocatedContainersMB);
     assertEquals("totalPmemAllocatedContainersMB incorrect", 16384,
         totalPmemAllocatedContainersMB);
-    assertEquals("totalVCoresAllocatedContainers incorrect", 4000,
-        totalVCoresAllocatedContainers);
     assertEquals("vmemCheckEnabled incorrect",  true, vmemCheckEnabled);
     assertEquals("pmemCheckEnabled incorrect",  true, pmemCheckEnabled);
     assertTrue("lastNodeUpdateTime incorrect", lastNodeUpdateTime == nmContext

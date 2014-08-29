@@ -20,18 +20,24 @@ package org.apache.hadoop.yarn.server.applicationhistoryservice.metrics.timeline
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.yarn.api.records.timeline.TimelineMetric;
-import org.apache.hadoop.yarn.api.records.timeline.TimelineMetrics;
+import org.apache.hadoop.metrics2.sink.timeline.TimelineMetric;
+import org.apache.hadoop.metrics2.sink.timeline.TimelineMetrics;
 import org.apache.hadoop.yarn.util.timeline.TimelineUtils;
-import org.codehaus.jackson.JsonGenerationException;
-
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static org.apache.hadoop.yarn.server.applicationhistoryservice.metrics.timeline.PhoenixTransactSQL.CREATE_METRICS_TABLE_SQL;
+import static org.apache.hadoop.yarn.server.applicationhistoryservice.metrics.timeline.PhoenixTransactSQL.Condition;
+import static org.apache.hadoop.yarn.server.applicationhistoryservice.metrics.timeline.PhoenixTransactSQL.UPSERT_METRICS_SQL;
 
 /**
  * Provides a facade over the Phoenix API to access HBase schema
@@ -49,6 +55,12 @@ public class PhoenixHBaseAccessor {
 
   public PhoenixHBaseAccessor(Configuration conf) {
     this.conf = conf;
+    try {
+      Class.forName("org.apache.phoenix.jdbc.PhoenixDriver");
+    } catch (ClassNotFoundException e) {
+      LOG.error("Phoenix client jar not found in the classpath.");
+      e.printStackTrace();
+    }
   }
 
   /**
@@ -73,7 +85,7 @@ public class PhoenixHBaseAccessor {
     String url = String.format(connectionUrl, zookeeperQuorum,
       zookeeperClientPort, znodeParent);
 
-    LOG.info("Metric store connection url: " + url);
+    LOG.debug("Metric store connection url: " + url);
 
     try {
       connection = DriverManager.getConnection(url);
@@ -90,7 +102,7 @@ public class PhoenixHBaseAccessor {
 
     try {
       stmt = conn.createStatement();
-      stmt.executeUpdate(PhoenixTransactSQL.CREATE_METRICS_TABLE_SQL);
+      stmt.executeUpdate(CREATE_METRICS_TABLE_SQL);
       conn.commit();
     } catch (SQLException sql) {
       LOG.warn("Error creating Metrics Schema in HBase using Phoenix.", sql);
@@ -123,9 +135,10 @@ public class PhoenixHBaseAccessor {
 
     Connection conn = getConnection();
     PreparedStatement stmt = null;
+    long currentTime = System.currentTimeMillis();
 
     try {
-      stmt = conn.prepareStatement(PhoenixTransactSQL.UPSERT_METRICS_SQL);
+      stmt = conn.prepareStatement(UPSERT_METRICS_SQL);
 
       for (TimelineMetric metric : timelineMetrics) {
         stmt.clearParameters();
@@ -134,12 +147,15 @@ public class PhoenixHBaseAccessor {
         stmt.setString(2, metric.getHostName());
         stmt.setString(3, metric.getAppId());
         stmt.setString(4, metric.getInstanceId());
-        stmt.setLong(5, metric.getStartTime());
-        stmt.setString(6,
+        stmt.setLong(5, currentTime);
+        stmt.setLong(6, metric.getStartTime());
+        stmt.setString(7,
           TimelineUtils.dumpTimelineRecordtoJSON(metric.getMetricValues()));
 
-        stmt.executeQuery();
+        stmt.executeUpdate();
       }
+
+      conn.commit();
 
     } finally {
       if (stmt != null) {
@@ -158,4 +174,60 @@ public class PhoenixHBaseAccessor {
       }
     }
   }
+
+  @SuppressWarnings("unchecked")
+  public TimelineMetrics getMetricRecords(final Condition condition)
+      throws SQLException, IOException {
+
+    if (condition.isEmpty()) {
+      throw new SQLException("No filter criteria specified.");
+    }
+
+    Connection conn = getConnection();
+    PreparedStatement stmt = null;
+    TimelineMetrics metrics = new TimelineMetrics();
+
+    try {
+      stmt = PhoenixTransactSQL.prepareGetMetricsSqlStmt(conn, condition);
+
+      ResultSet rs = stmt.executeQuery();
+
+      while (rs.next()) {
+        TimelineMetric metric = new TimelineMetric();
+        metric.setMetricName(rs.getString("METRIC_NAME"));
+        metric.setAppId(rs.getString("APP_ID"));
+        metric.setInstanceId(rs.getString("INSTANCE_ID"));
+        metric.setHostName(rs.getString("HOSTNAME"));
+        metric.setStartTime(rs.getLong("START_TIME"));
+        metric.setMetricValues(
+          (Map<Long, Double>) TimelineUtils.readMetricFromJSON(
+            rs.getString("METRICS")));
+
+        if (condition.isGrouped()) {
+          metrics.addOrMergeTimelineMetric(metric);
+        } else {
+          metrics.getMetrics().add(metric);
+        }
+      }
+
+    } finally {
+      if (stmt != null) {
+        try {
+          stmt.close();
+        } catch (SQLException e) {
+          // Ignore
+        }
+      }
+      if (conn != null) {
+        try {
+          conn.close();
+        } catch (SQLException sql) {
+          // Ignore
+        }
+      }
+    }
+
+    return metrics;
+  }
+
 }

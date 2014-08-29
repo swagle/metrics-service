@@ -62,11 +62,11 @@ public class InfoBlock extends HtmlBlock {
         	DIV<TD<TR<TABLE<DIV<Hamlet>>>>> singleLineDiv;
             for ( String line :lines) {
               singleLineDiv = td.div();
-              singleLineDiv._(line);
+              singleLineDiv._r(line);
               singleLineDiv._();
             }
           } else {
-            td._(value);
+            td._r(value);
           }
           td._();
         } else {

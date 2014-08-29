@@ -107,12 +107,8 @@ public class ComputeFairShares {
     double right = rMax;
     for (int i = 0; i < COMPUTE_FAIR_SHARES_ITERATIONS; i++) {
       double mid = (left + right) / 2.0;
-      int plannedResourceUsed = resourceUsedWithWeightToResourceRatio(
-          mid, schedulables, type);
-      if (plannedResourceUsed == totalResource) {
-        right = mid;
-        break;
-      } else if (plannedResourceUsed < totalResource) {
+      if (resourceUsedWithWeightToResourceRatio(mid, schedulables, type) <
+          totalResource) {
         left = mid;
       } else {
         right = mid;

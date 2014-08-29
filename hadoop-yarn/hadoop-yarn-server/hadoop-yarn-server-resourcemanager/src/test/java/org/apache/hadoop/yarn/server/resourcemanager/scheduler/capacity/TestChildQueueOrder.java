@@ -89,7 +89,7 @@ public class TestChildQueueOrder {
         Resources.createResource(GB, 1));
     when(csContext.getMaximumResourceCapability()).thenReturn(
         Resources.createResource(16*GB, 32));
-    when(csContext.getClusterResource()).
+    when(csContext.getClusterResources()).
     thenReturn(Resources.createResource(100 * 16 * GB, 100 * 32));
     when(csContext.getApplicationComparator()).
     thenReturn(CapacityScheduler.applicationComparator);

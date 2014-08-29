@@ -21,10 +21,8 @@ package org.apache.hadoop.yarn.server.applicationhistoryservice;
 import java.io.IOException;
 import java.net.URI;
 
-import org.junit.Assert;
+import junit.framework.Assert;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -44,9 +42,6 @@ import org.junit.Test;
 public class TestFileSystemApplicationHistoryStore extends
     ApplicationHistoryStoreTestUtils {
 
-  private static Log LOG = LogFactory
-    .getLog(TestFileSystemApplicationHistoryStore.class.getName());
-
   private FileSystem fs;
   private Path fsWorkingPath;
 
@@ -55,12 +50,9 @@ public class TestFileSystemApplicationHistoryStore extends
     fs = new RawLocalFileSystem();
     Configuration conf = new Configuration();
     fs.initialize(new URI("/"), conf);
-    fsWorkingPath =
-        new Path("target",
-          TestFileSystemApplicationHistoryStore.class.getSimpleName());
+    fsWorkingPath = new Path("Test");
     fs.delete(fsWorkingPath, true);
-    conf.set(YarnConfiguration.FS_APPLICATION_HISTORY_STORE_URI,
-      fsWorkingPath.toString());
+    conf.set(YarnConfiguration.FS_APPLICATION_HISTORY_STORE_URI, fsWorkingPath.toString());
     store = new FileSystemApplicationHistoryStore();
     store.init(conf);
     store.start();
@@ -75,7 +67,6 @@ public class TestFileSystemApplicationHistoryStore extends
 
   @Test
   public void testReadWriteHistoryData() throws IOException {
-    LOG.info("Starting testReadWriteHistoryData");
     testWriteHistoryData(5);
     testReadHistoryData(5);
   }
@@ -176,7 +167,6 @@ public class TestFileSystemApplicationHistoryStore extends
 
   @Test
   public void testWriteAfterApplicationFinish() throws IOException {
-    LOG.info("Starting testWriteAfterApplicationFinish");
     ApplicationId appId = ApplicationId.newInstance(0, 1);
     writeApplicationStartData(appId);
     writeApplicationFinishData(appId);
@@ -213,7 +203,6 @@ public class TestFileSystemApplicationHistoryStore extends
 
   @Test
   public void testMassiveWriteContainerHistoryData() throws IOException {
-    LOG.info("Starting testMassiveWriteContainerHistoryData");
     long mb = 1024 * 1024;
     long usedDiskBefore = fs.getContentSummary(fsWorkingPath).getLength() / mb;
     ApplicationId appId = ApplicationId.newInstance(0, 1);
@@ -232,14 +221,12 @@ public class TestFileSystemApplicationHistoryStore extends
 
   @Test
   public void testMissingContainerHistoryData() throws IOException {
-    LOG.info("Starting testMissingContainerHistoryData");
     testWriteHistoryData(3, true, false);
     testReadHistoryData(3, true, false);
   }
   
   @Test
   public void testMissingApplicationAttemptHistoryData() throws IOException {
-    LOG.info("Starting testMissingApplicationAttemptHistoryData");
     testWriteHistoryData(3, false, true);
     testReadHistoryData(3, false, true);
   }

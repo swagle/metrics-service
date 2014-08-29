@@ -24,7 +24,6 @@ import static org.junit.Assert.fail;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -43,6 +42,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -272,8 +272,8 @@ public class TestDelegationTokenRenewer {
     public void initialize(URI uri, Configuration conf) throws IOException {}
     
     @Override 
-    public MyToken getDelegationToken(String renewer) throws IOException {
-      MyToken result = createTokens(new Text(renewer));
+    public MyToken getDelegationToken(Text renewer) throws IOException {
+      MyToken result = createTokens(renewer);
       LOG.info("Called MYDFS.getdelegationtoken " + result);
       return result;
     }
@@ -330,9 +330,9 @@ public class TestDelegationTokenRenewer {
     
     // get the delegation tokens
     MyToken token1, token2, token3;
-    token1 = dfs.getDelegationToken("user1");
-    token2 = dfs.getDelegationToken("user2");
-    token3 = dfs.getDelegationToken("user3");
+    token1 = dfs.getDelegationToken(new Text("user1"));
+    token2 = dfs.getDelegationToken(new Text("user2"));
+    token3 = dfs.getDelegationToken(new Text("user3"));
 
     //to cause this one to be set for renew in 2 secs
     Renewer.tokenToRenewIn2Sec = token1;
@@ -382,7 +382,7 @@ public class TestDelegationTokenRenewer {
     // time is up.
     // Wait for 3 secs , and make sure no renews were called
     ts = new Credentials();
-    MyToken token4 = dfs.getDelegationToken("user4");
+    MyToken token4 = dfs.getDelegationToken(new Text("user4"));
     
     //to cause this one to be set for renew in 2 secs
     Renewer.tokenToRenewIn2Sec = token4; 
@@ -421,7 +421,7 @@ public class TestDelegationTokenRenewer {
     MyFS dfs = (MyFS)FileSystem.get(conf);
     LOG.info("dfs="+(Object)dfs.hashCode() + ";conf="+conf.hashCode());
 
-    MyToken token = dfs.getDelegationToken("user1");
+    MyToken token = dfs.getDelegationToken(new Text("user1"));
     token.cancelToken();
 
     Credentials ts = new Credentials();
@@ -462,7 +462,7 @@ public class TestDelegationTokenRenewer {
     LOG.info("dfs="+(Object)dfs.hashCode() + ";conf="+conf.hashCode());
 
     Credentials ts = new Credentials();
-    MyToken token1 = dfs.getDelegationToken("user1");
+    MyToken token1 = dfs.getDelegationToken(new Text("user1"));
 
     //to cause this one to be set for renew in 2 secs
     Renewer.tokenToRenewIn2Sec = token1; 
@@ -533,7 +533,7 @@ public class TestDelegationTokenRenewer {
     
     Credentials ts = new Credentials();
     // get the delegation tokens
-    MyToken token1 = dfs.getDelegationToken("user1");
+    MyToken token1 = dfs.getDelegationToken(new Text("user1"));
 
     String nn1 = DelegationTokenRenewer.SCHEME + "://host1:0";
     ts.addToken(new Text(nn1), token1);
@@ -610,7 +610,7 @@ public class TestDelegationTokenRenewer {
 
     Credentials ts = new Credentials();
     // get the delegation tokens
-    MyToken token1 = dfs.getDelegationToken("user1");
+    MyToken token1 = dfs.getDelegationToken(new Text("user1"));
     
     String nn1 = DelegationTokenRenewer.SCHEME + "://host1:0";
     ts.addToken(new Text(nn1), token1);
@@ -674,40 +674,7 @@ public class TestDelegationTokenRenewer {
       Thread.sleep(200);
     }
   }
-
-  @Test(timeout=20000)
-  public void testDTRonAppSubmission()
-      throws IOException, InterruptedException, BrokenBarrierException {
-    final Credentials credsx = new Credentials();
-    final Token<?> tokenx = mock(Token.class);
-    credsx.addToken(new Text("token"), tokenx);
-    doReturn(true).when(tokenx).isManaged();
-    doThrow(new IOException("boom"))
-        .when(tokenx).renew(any(Configuration.class));
-      // fire up the renewer
-    final DelegationTokenRenewer dtr =
-         createNewDelegationTokenRenewer(conf, counter);
-    RMContext mockContext = mock(RMContext.class);
-    ClientRMService mockClientRMService = mock(ClientRMService.class);
-    when(mockContext.getClientRMService()).thenReturn(mockClientRMService);
-    InetSocketAddress sockAddr =
-        InetSocketAddress.createUnresolved("localhost", 1234);
-    when(mockClientRMService.getBindAddress()).thenReturn(sockAddr);
-    dtr.setRMContext(mockContext);
-    when(mockContext.getDelegationTokenRenewer()).thenReturn(dtr);
-    dtr.init(conf);
-    dtr.start();
-
-    try {
-      dtr.addApplicationSync(mock(ApplicationId.class), credsx, false);
-      fail("Catch IOException on app submission");
-    } catch (IOException e){
-      Assert.assertTrue(e.getMessage().contains(tokenx.toString()));
-      Assert.assertTrue(e.getCause().toString().contains("boom"));
-    }
-
-  }
-
+  
   @Test(timeout=20000)                                                         
   public void testConcurrentAddApplication()                                  
       throws IOException, InterruptedException, BrokenBarrierException {       

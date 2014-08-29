@@ -18,7 +18,6 @@
 package org.apache.hadoop.yarn.server.resourcemanager.monitor.capacity;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -111,7 +110,7 @@ public class ProportionalCapacityPreemptionPolicy implements SchedulingEditPolic
   public static final String NATURAL_TERMINATION_FACTOR =
       "yarn.resourcemanager.monitor.capacity.preemption.natural_termination_factor";
 
-  // the dispatcher to send preempt and kill events
+  //the dispatcher to send preempt and kill events
   public EventHandler<ContainerPreemptEvent> dispatcher;
 
   private final Clock clock;
@@ -165,17 +164,12 @@ public class ProportionalCapacityPreemptionPolicy implements SchedulingEditPolic
     observeOnly = config.getBoolean(OBSERVE_ONLY, false);
     rc = scheduler.getResourceCalculator();
   }
-  
-  @VisibleForTesting
-  public ResourceCalculator getResourceCalculator() {
-    return rc;
-  }
 
   @Override
   public void editSchedule(){
     CSQueue root = scheduler.getRootQueue();
     Resource clusterResources =
-      Resources.clone(scheduler.getClusterResource());
+      Resources.clone(scheduler.getClusterResources());
     containerBasedPreemptOrKill(root, clusterResources);
   }
 
@@ -208,9 +202,7 @@ public class ProportionalCapacityPreemptionPolicy implements SchedulingEditPolic
     Map<ApplicationAttemptId,Set<RMContainer>> toPreempt =
         getContainersToPreempt(queues, clusterResources);
 
-    if (LOG.isDebugEnabled()) {
-      logToCSV(queues);
-    }
+    logToCSV(queues);
 
     // if we are in observeOnly mode return before any action is taken
     if (observeOnly) {
@@ -301,31 +293,34 @@ public class ProportionalCapacityPreemptionPolicy implements SchedulingEditPolic
     // with the total capacity for this set of queues
     Resource unassigned = Resources.clone(tot_guarant);
 
-    // group queues based on whether they have non-zero guaranteed capacity
-    Set<TempQueue> nonZeroGuarQueues = new HashSet<TempQueue>();
-    Set<TempQueue> zeroGuarQueues = new HashSet<TempQueue>();
+    //assign all cluster resources until no more demand, or no resources are left
+    while (!qAlloc.isEmpty() && Resources.greaterThan(rc, tot_guarant,
+          unassigned, Resources.none())) {
+      Resource wQassigned = Resource.newInstance(0, 0);
 
-    for (TempQueue q : qAlloc) {
-      if (Resources
-          .greaterThan(rc, tot_guarant, q.guaranteed, Resources.none())) {
-        nonZeroGuarQueues.add(q);
-      } else {
-        zeroGuarQueues.add(q);
+      // we compute normalizedGuarantees capacity based on currently active
+      // queues
+      resetCapacity(rc, unassigned, qAlloc);
+
+      // offer for each queue their capacity first and in following invocations
+      // their share of over-capacity
+      for (Iterator<TempQueue> i = qAlloc.iterator(); i.hasNext();) {
+        TempQueue sub = i.next();
+        Resource wQavail =
+          Resources.multiply(unassigned, sub.normalizedGuarantee);
+        Resource wQidle = sub.offer(wQavail, rc, tot_guarant);
+        Resource wQdone = Resources.subtract(wQavail, wQidle);
+        // if the queue returned a value > 0 it means it is fully satisfied
+        // and it is removed from the list of active queues qAlloc
+        if (!Resources.greaterThan(rc, tot_guarant,
+              wQdone, Resources.none())) {
+          i.remove();
+        }
+        Resources.addTo(wQassigned, wQdone);
       }
+      Resources.subtractFrom(unassigned, wQassigned);
     }
 
-    // first compute the allocation as a fixpoint based on guaranteed capacity
-    computeFixpointAllocation(rc, tot_guarant, nonZeroGuarQueues, unassigned,
-        false);
-
-    // if any capacity is left unassigned, distributed among zero-guarantee 
-    // queues uniformly (i.e., not based on guaranteed capacity, as this is zero)
-    if (!zeroGuarQueues.isEmpty()
-        && Resources.greaterThan(rc, tot_guarant, unassigned, Resources.none())) {
-      computeFixpointAllocation(rc, tot_guarant, zeroGuarQueues, unassigned,
-          true);
-    }
-    
     // based on ideal assignment computed above and current assignment we derive
     // how much preemption is required overall
     Resource totPreemptionNeeded = Resource.newInstance(0, 0);
@@ -358,46 +353,6 @@ public class ProportionalCapacityPreemptionPolicy implements SchedulingEditPolic
     }
 
   }
-  
-  /**
-   * Given a set of queues compute the fix-point distribution of unassigned
-   * resources among them. As pending request of a queue are exhausted, the
-   * queue is removed from the set and remaining capacity redistributed among
-   * remaining queues. The distribution is weighted based on guaranteed
-   * capacity, unless asked to ignoreGuarantee, in which case resources are
-   * distributed uniformly.
-   */
-  private void computeFixpointAllocation(ResourceCalculator rc,
-      Resource tot_guarant, Collection<TempQueue> qAlloc, Resource unassigned, 
-      boolean ignoreGuarantee) {
-    //assign all cluster resources until no more demand, or no resources are left
-    while (!qAlloc.isEmpty() && Resources.greaterThan(rc, tot_guarant,
-          unassigned, Resources.none())) {
-      Resource wQassigned = Resource.newInstance(0, 0);
-
-      // we compute normalizedGuarantees capacity based on currently active
-      // queues
-      resetCapacity(rc, unassigned, qAlloc, ignoreGuarantee);
-      
-      // offer for each queue their capacity first and in following invocations
-      // their share of over-capacity
-      for (Iterator<TempQueue> i = qAlloc.iterator(); i.hasNext();) {
-        TempQueue sub = i.next();
-        Resource wQavail =
-          Resources.multiply(unassigned, sub.normalizedGuarantee);
-        Resource wQidle = sub.offer(wQavail, rc, tot_guarant);
-        Resource wQdone = Resources.subtract(wQavail, wQidle);
-        // if the queue returned a value > 0 it means it is fully satisfied
-        // and it is removed from the list of active queues qAlloc
-        if (!Resources.greaterThan(rc, tot_guarant,
-              wQdone, Resources.none())) {
-          i.remove();
-        }
-        Resources.addTo(wQassigned, wQdone);
-      }
-      Resources.subtractFrom(unassigned, wQassigned);
-    }
-  }
 
   /**
    * Computes a normalizedGuaranteed capacity based on active queues
@@ -406,21 +361,14 @@ public class ProportionalCapacityPreemptionPolicy implements SchedulingEditPolic
    * @param queues the list of queues to consider
    */
   private void resetCapacity(ResourceCalculator rc, Resource clusterResource,
-      Collection<TempQueue> queues, boolean ignoreGuar) {
+      List<TempQueue> queues) {
     Resource activeCap = Resource.newInstance(0, 0);
-    
-    if (ignoreGuar) {
-      for (TempQueue q : queues) {
-        q.normalizedGuarantee = (float)  1.0f / ((float) queues.size());
-      }
-    } else {
-      for (TempQueue q : queues) {
-        Resources.addTo(activeCap, q.guaranteed);
-      }
-      for (TempQueue q : queues) {
-        q.normalizedGuarantee = Resources.divide(rc, clusterResource,
-            q.guaranteed, activeCap);
-      }
+    for (TempQueue q : queues) {
+      Resources.addTo(activeCap, q.guaranteed);
+    }
+    for (TempQueue q : queues) {
+      q.normalizedGuarantee = Resources.divide(rc, clusterResource,
+          q.guaranteed, activeCap);
     }
   }
 
@@ -437,9 +385,8 @@ public class ProportionalCapacityPreemptionPolicy implements SchedulingEditPolic
   private Map<ApplicationAttemptId,Set<RMContainer>> getContainersToPreempt(
       List<TempQueue> queues, Resource clusterResource) {
 
-    Map<ApplicationAttemptId,Set<RMContainer>> preemptMap =
+    Map<ApplicationAttemptId,Set<RMContainer>> list =
         new HashMap<ApplicationAttemptId,Set<RMContainer>>();
-    List<RMContainer> skippedAMContainerlist = new ArrayList<RMContainer>();
 
     for (TempQueue qT : queues) {
       // we act only if we are violating balance by more than
@@ -450,83 +397,26 @@ public class ProportionalCapacityPreemptionPolicy implements SchedulingEditPolic
         // accounts for natural termination of containers
         Resource resToObtain =
           Resources.multiply(qT.toBePreempted, naturalTerminationFactor);
-        Resource skippedAMSize = Resource.newInstance(0, 0);
 
         // lock the leafqueue while we scan applications and unreserve
-        synchronized (qT.leafQueue) {
-          NavigableSet<FiCaSchedulerApp> ns = 
-              (NavigableSet<FiCaSchedulerApp>) qT.leafQueue.getApplications();
+        synchronized(qT.leafQueue) {
+          NavigableSet<FiCaSchedulerApp> ns =
+            (NavigableSet<FiCaSchedulerApp>) qT.leafQueue.getApplications();
           Iterator<FiCaSchedulerApp> desc = ns.descendingIterator();
           qT.actuallyPreempted = Resources.clone(resToObtain);
           while (desc.hasNext()) {
             FiCaSchedulerApp fc = desc.next();
-            if (Resources.lessThanOrEqual(rc, clusterResource, resToObtain,
-                Resources.none())) {
+            if (Resources.lessThanOrEqual(rc, clusterResource,
+                resToObtain, Resources.none())) {
               break;
             }
-            preemptMap.put(
-                fc.getApplicationAttemptId(),
-                preemptFrom(fc, clusterResource, resToObtain,
-                    skippedAMContainerlist, skippedAMSize));
+            list.put(fc.getApplicationAttemptId(),
+            preemptFrom(fc, clusterResource, resToObtain));
           }
-          Resource maxAMCapacityForThisQueue = Resources.multiply(
-              Resources.multiply(clusterResource,
-                  qT.leafQueue.getAbsoluteCapacity()),
-              qT.leafQueue.getMaxAMResourcePerQueuePercent());
-
-          // Can try preempting AMContainers (still saving atmost
-          // maxAMCapacityForThisQueue AMResource's) if more resources are
-          // required to be preempted from this Queue.
-          preemptAMContainers(clusterResource, preemptMap,
-              skippedAMContainerlist, resToObtain, skippedAMSize,
-              maxAMCapacityForThisQueue);
         }
       }
     }
-    return preemptMap;
-  }
-
-  /**
-   * As more resources are needed for preemption, saved AMContainers has to be
-   * rescanned. Such AMContainers can be preempted based on resToObtain, but 
-   * maxAMCapacityForThisQueue resources will be still retained.
-   *  
-   * @param clusterResource
-   * @param preemptMap
-   * @param skippedAMContainerlist
-   * @param resToObtain
-   * @param skippedAMSize
-   * @param maxAMCapacityForThisQueue
-   */
-  private void preemptAMContainers(Resource clusterResource,
-      Map<ApplicationAttemptId, Set<RMContainer>> preemptMap,
-      List<RMContainer> skippedAMContainerlist, Resource resToObtain,
-      Resource skippedAMSize, Resource maxAMCapacityForThisQueue) {
-    for (RMContainer c : skippedAMContainerlist) {
-      // Got required amount of resources for preemption, can stop now
-      if (Resources.lessThanOrEqual(rc, clusterResource, resToObtain,
-          Resources.none())) {
-        break;
-      }
-      // Once skippedAMSize reaches down to maxAMCapacityForThisQueue,
-      // container selection iteration for preemption will be stopped. 
-      if (Resources.lessThanOrEqual(rc, clusterResource, skippedAMSize,
-          maxAMCapacityForThisQueue)) {
-        break;
-      }
-      Set<RMContainer> contToPrempt = preemptMap.get(c
-          .getApplicationAttemptId());
-      if (null == contToPrempt) {
-        contToPrempt = new HashSet<RMContainer>();
-        preemptMap.put(c.getApplicationAttemptId(), contToPrempt);
-      }
-      contToPrempt.add(c);
-      
-      Resources.subtractFrom(resToObtain, c.getContainer().getResource());
-      Resources.subtractFrom(skippedAMSize, c.getContainer()
-          .getResource());
-    }
-    skippedAMContainerlist.clear();
+    return list;
   }
 
   /**
@@ -538,9 +428,8 @@ public class ProportionalCapacityPreemptionPolicy implements SchedulingEditPolic
    * @param rsrcPreempt
    * @return
    */
-  private Set<RMContainer> preemptFrom(FiCaSchedulerApp app,
-      Resource clusterResource, Resource rsrcPreempt,
-      List<RMContainer> skippedAMContainerlist, Resource skippedAMSize) {
+  private Set<RMContainer> preemptFrom(
+      FiCaSchedulerApp app, Resource clusterResource, Resource rsrcPreempt) {
     Set<RMContainer> ret = new HashSet<RMContainer>();
     ApplicationAttemptId appId = app.getApplicationAttemptId();
 
@@ -571,12 +460,6 @@ public class ProportionalCapacityPreemptionPolicy implements SchedulingEditPolic
       if (Resources.lessThanOrEqual(rc, clusterResource,
             rsrcPreempt, Resources.none())) {
         return ret;
-      }
-      // Skip AM Container from preemption for now.
-      if (c.isAMContainer()) {
-        skippedAMContainerlist.add(c);
-        Resources.addTo(skippedAMSize, c.getContainer().getResource());
-        continue;
       }
       ret.add(c);
       Resources.subtractFrom(rsrcPreempt, c.getContainer().getResource());
@@ -632,25 +515,18 @@ public class ProportionalCapacityPreemptionPolicy implements SchedulingEditPolic
   private TempQueue cloneQueues(CSQueue root, Resource clusterResources) {
     TempQueue ret;
     synchronized (root) {
-      String queueName = root.getQueueName();
-      float absUsed = root.getAbsoluteUsedCapacity();
-      float absCap = root.getAbsoluteCapacity();
-      float absMaxCap = root.getAbsoluteMaximumCapacity();
-
+    float absUsed = root.getAbsoluteUsedCapacity();
       Resource current = Resources.multiply(clusterResources, absUsed);
-      Resource guaranteed = Resources.multiply(clusterResources, absCap);
-      Resource maxCapacity = Resources.multiply(clusterResources, absMaxCap);
+      Resource guaranteed =
+        Resources.multiply(clusterResources, root.getAbsoluteCapacity());
       if (root instanceof LeafQueue) {
         LeafQueue l = (LeafQueue) root;
         Resource pending = l.getTotalResourcePending();
-        ret = new TempQueue(queueName, current, pending, guaranteed,
-            maxCapacity);
-
+        ret = new TempQueue(root.getQueueName(), current, pending, guaranteed);
         ret.setLeafQueue(l);
       } else {
         Resource pending = Resource.newInstance(0, 0);
-        ret = new TempQueue(root.getQueueName(), current, pending, guaranteed,
-            maxCapacity);
+        ret = new TempQueue(root.getQueueName(), current, pending, guaranteed);
         for (CSQueue c : root.getChildQueues()) {
           ret.addChild(cloneQueues(c, clusterResources));
         }
@@ -675,7 +551,7 @@ public class ProportionalCapacityPreemptionPolicy implements SchedulingEditPolic
       sb.append(", ");
       tq.appendLogString(sb);
     }
-    LOG.debug(sb.toString());
+    LOG.info(sb.toString());
   }
 
   /**
@@ -687,7 +563,6 @@ public class ProportionalCapacityPreemptionPolicy implements SchedulingEditPolic
     final Resource current;
     final Resource pending;
     final Resource guaranteed;
-    final Resource maxCapacity;
     Resource idealAssigned;
     Resource toBePreempted;
     Resource actuallyPreempted;
@@ -698,12 +573,11 @@ public class ProportionalCapacityPreemptionPolicy implements SchedulingEditPolic
     LeafQueue leafQueue;
 
     TempQueue(String queueName, Resource current, Resource pending,
-        Resource guaranteed, Resource maxCapacity) {
+        Resource guaranteed) {
       this.queueName = queueName;
       this.current = current;
       this.pending = pending;
       this.guaranteed = guaranteed;
-      this.maxCapacity = maxCapacity;
       this.idealAssigned = Resource.newInstance(0, 0);
       this.actuallyPreempted = Resource.newInstance(0, 0);
       this.toBePreempted = Resource.newInstance(0, 0);
@@ -740,12 +614,12 @@ public class ProportionalCapacityPreemptionPolicy implements SchedulingEditPolic
     // the unused ones
     Resource offer(Resource avail, ResourceCalculator rc,
         Resource clusterResource) {
-      // remain = avail - min(avail, (max - assigned), (current + pending - assigned))
-      Resource accepted = 
-          Resources.min(rc, clusterResource, 
-              Resources.subtract(maxCapacity, idealAssigned),
-          Resources.min(rc, clusterResource, avail, Resources.subtract(
-              Resources.add(current, pending), idealAssigned)));
+      // remain = avail - min(avail, current + pending - assigned)
+      Resource accepted = Resources.min(rc, clusterResource,
+          avail,
+          Resources.subtract(
+              Resources.add(current, pending),
+              idealAssigned));
       Resource remain = Resources.subtract(avail, accepted);
       Resources.addTo(idealAssigned, accepted);
       return remain;
@@ -754,15 +628,13 @@ public class ProportionalCapacityPreemptionPolicy implements SchedulingEditPolic
     @Override
     public String toString() {
       StringBuilder sb = new StringBuilder();
-      sb.append(" NAME: " + queueName)
-        .append(" CUR: ").append(current)
+      sb.append("CUR: ").append(current)
         .append(" PEN: ").append(pending)
         .append(" GAR: ").append(guaranteed)
         .append(" NORM: ").append(normalizedGuarantee)
         .append(" IDEAL_ASSIGNED: ").append(idealAssigned)
         .append(" IDEAL_PREEMPT: ").append(toBePreempted)
-        .append(" ACTUAL_PREEMPT: ").append(actuallyPreempted)
-        .append("\n");
+        .append(" ACTUAL_PREEMPT: ").append(actuallyPreempted);
 
       return sb.toString();
     }
