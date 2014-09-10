@@ -25,6 +25,7 @@ import org.codehaus.jackson.map.AnnotationIntrospector;
 import org.codehaus.jackson.map.JsonMappingException;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.map.annotate.JsonSerialize.Inclusion;
+import org.codehaus.jackson.type.TypeReference;
 import org.codehaus.jackson.xc.JaxbAnnotationIntrospector;
 import java.io.IOException;
 import java.util.Map;
@@ -38,6 +39,8 @@ import java.util.Map;
 public class TimelineUtils {
 
   private static ObjectMapper mapper;
+  private static TypeReference<Map<Long, Double>> metricValuesTypeRef =
+    new TypeReference<Map<Long, Double>>() {};
 
   static {
     mapper = new ObjectMapper();
@@ -84,7 +87,7 @@ public class TimelineUtils {
   }
 
   public static Map readMetricFromJSON(String json) throws IOException {
-    return mapper.readValue(json, Map.class);
+    return mapper.readValue(json, metricValuesTypeRef);
   }
 
 }

@@ -490,7 +490,7 @@ public class TimelineWebServices {
   }
 
   private static boolean parseBoolean(String booleanStr) {
-    return booleanStr != null ? Boolean.parseBoolean(booleanStr) : false;
+    return booleanStr == null || Boolean.parseBoolean(booleanStr);
   }
 
   private static List<String> parseListStr(String str, String delimiter) {

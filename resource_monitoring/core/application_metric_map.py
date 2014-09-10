@@ -107,6 +107,10 @@ class ApplicationMetricMap:
     return json.dumps(timeline_metrics)
   pass
 
+  def clear(self):
+    self.app_metric_map.clear()
+  pass
+
   def get_start_time(self, app_id, metric_id):
     if self.app_metric_map.has_key(app_id):
       if self.app_metric_map.get(app_id).has_key(metric_id):

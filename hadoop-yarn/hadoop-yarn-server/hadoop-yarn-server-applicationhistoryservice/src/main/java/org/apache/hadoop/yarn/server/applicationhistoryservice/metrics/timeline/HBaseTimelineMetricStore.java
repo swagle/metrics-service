@@ -17,6 +17,7 @@
  */
 package org.apache.hadoop.yarn.server.applicationhistoryservice.metrics.timeline;
 
+import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -41,8 +42,13 @@ public class HBaseTimelineMetricStore extends AbstractService
 
   static final Log LOG = LogFactory.getLog(HBaseTimelineMetricStore.class);
   static final String HBASE_CONF = "hbase-site.xml";
-  static final String DEFAULT_CHECKPOINT_LOCATION =
-    "/etc/hadoop/conf/timeline-metrics-aggregator-checkpoint";
+  static final String DEFAULT_CHECKPOINT_LOCATION = "/tmp";
+  static final String AGGREGATOR_CHECKPOINT_FILE =
+    "timeline-metrics-aggregator-checkpoint";
+  static final String HOURLY_AGGREGATE_ROLLUP_CHECKPOINT_FILE =
+    "timeline-metrics-hourly-aggregator-checkpoint";
+  static final String HOURLY_ROLLUP_CHECKPOINT_FILE =
+    "timeline-metrics-hourly-checkpoint";
   private PhoenixHBaseAccessor hBaseAccessor;
   private InfluxDBWriter influxDBWriter = new InfluxDBWriter();
 
@@ -65,14 +71,37 @@ public class HBaseTimelineMetricStore extends AbstractService
       hBaseAccessor = new PhoenixHBaseAccessor(hbaseConf);
       hBaseAccessor.initMetricSchema();
 
-      String checkpointLocation = conf.get(
-        YarnConfiguration.TIMELINE_METRICS_AGGREGATOR_CHECKPOINT,
-        DEFAULT_CHECKPOINT_LOCATION);
+      String checkpointLocation = FilenameUtils.concat(conf.get(
+        YarnConfiguration.TIMELINE_METRICS_AGGREGATOR_CHECKPOINT_DIR,
+        DEFAULT_CHECKPOINT_LOCATION), AGGREGATOR_CHECKPOINT_FILE);
 
-      /*TimelineMetricAggregator aggregator = new TimelineMetricAggregator
-        (hBaseAccessor, checkpointLocation);
-      Thread aggregatorThread = new Thread(aggregator);
-      aggregatorThread.start();*/
+      // Start the cluster aggregator
+      TimelineMetricClusterAggregator clusterAggregator =
+        new TimelineMetricClusterAggregator(hBaseAccessor, checkpointLocation);
+      Thread aggregatorThread = new Thread(clusterAggregator);
+      aggregatorThread.start();
+
+      // Start the hourly cluster aggregator
+      String clusterAggregatorHourlyCheckpoint = FilenameUtils.concat(conf.get(
+        YarnConfiguration.TIMELINE_METRICS_AGGREGATOR_CHECKPOINT_DIR,
+        DEFAULT_CHECKPOINT_LOCATION), HOURLY_AGGREGATE_ROLLUP_CHECKPOINT_FILE);
+
+      TimelineMetricClusterAggregatorHourly clusterAggregatorHourly = new
+        TimelineMetricClusterAggregatorHourly(hBaseAccessor,
+        clusterAggregatorHourlyCheckpoint);
+      Thread rollupAggregatorThread = new Thread(clusterAggregatorHourly);
+      rollupAggregatorThread.start();
+
+      // Start hourly host aggregator
+      String hostAggregatorHourlyCheckpoint = FilenameUtils.concat(conf.get(
+        YarnConfiguration.TIMELINE_METRICS_AGGREGATOR_CHECKPOINT_DIR,
+        DEFAULT_CHECKPOINT_LOCATION), HOURLY_ROLLUP_CHECKPOINT_FILE);
+
+      TimelineMetricAggregatorHourly aggregatorHourly = new
+        TimelineMetricAggregatorHourly(hBaseAccessor, hostAggregatorHourlyCheckpoint);
+      Thread aggregatorHourlyThread = new Thread(aggregatorHourly);
+      aggregatorHourlyThread.start();
+
     } else {
       throw new IllegalStateException("Unable to initialize the metrics " +
         "subsystem. No hbase-site present in the classpath.");
@@ -90,10 +119,14 @@ public class HBaseTimelineMetricStore extends AbstractService
       Long startTime, Long endTime, Integer limit,
       boolean groupedByHosts) throws SQLException, IOException {
 
-    return hBaseAccessor.getMetricRecords(
-      new Condition(metricNames, hostname, applicationId, instanceId,
-        startTime, endTime, limit, groupedByHosts)
-    );
+    Condition condition = new Condition(metricNames, hostname, applicationId,
+      instanceId, startTime, endTime, limit, groupedByHosts);
+
+    if (hostname == null) {
+      return hBaseAccessor.getAggregateMetricRecords(condition);
+    }
+
+    return hBaseAccessor.getMetricRecords(condition);
   }
 
   @Override

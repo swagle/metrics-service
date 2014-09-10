@@ -34,30 +34,69 @@ public class PhoenixTransactSQL {
 
   static final Log LOG = LogFactory.getLog(PhoenixTransactSQL.class);
 
-     /**
-      * Create table to store individual metric records.
-      */
+  /**
+  * Create table to store individual metric records.
+  */
   public static final String CREATE_METRICS_TABLE_SQL = "CREATE TABLE IF NOT " +
     "EXISTS METRIC_RECORD (METRIC_NAME VARCHAR, HOSTNAME VARCHAR, " +
     "APP_ID VARCHAR, INSTANCE_ID VARCHAR, TIMESTAMP UNSIGNED_LONG NOT NULL, " +
     "START_TIME UNSIGNED_LONG NOT NULL, " +
     "METRICS VARCHAR CONSTRAINT pk " +
-    "PRIMARY KEY (METRIC_NAME, HOSTNAME, APP_ID, INSTANCE_ID, START_TIME)) " +
+    "PRIMARY KEY (METRIC_NAME, HOSTNAME, APP_ID, INSTANCE_ID, TIMESTAMP)) " +
     "IMMUTABLE_ROWS=true, TTL=86400";
 
+  public static final String CREATE_METRICS_HOURLY_TABLE_SQL =
+    "CREATE TABLE IF NOT EXISTS METRIC_RECORD_HOURLY " +
+    "(METRIC_NAME VARCHAR, HOSTNAME VARCHAR, " +
+    "APP_ID VARCHAR, INSTANCE_ID VARCHAR, TIMESTAMP UNSIGNED_LONG NOT NULL, " +
+    "METRIC_AVG DOUBLE, METRIC_MAX DOUBLE," +
+    "METRIC_MIN DOUBLE, METRIC_AGGREGATES VARCHAR CONSTRAINT pk " +
+    "PRIMARY KEY (METRIC_NAME, HOSTNAME, APP_ID, INSTANCE_ID, TIMESTAMP)) " +
+    "IMMUTABLE_ROWS=true, TTL=2592000";
+
+  public static final String CREATE_METRICS_AGGREGATE_TABLE_SQL =
+    "CREATE TABLE IF NOT EXISTS METRIC_AGGREGATE " +
+    "(METRIC_NAME VARCHAR, APP_ID VARCHAR, INSTANCE_ID VARCHAR, " +
+    "TIMESTAMP UNSIGNED_LONG NOT NULL, METRIC_SUM DOUBLE, " +
+    "HOSTS_COUNT UNSIGNED_INT, METRIC_MAX DOUBLE, METRIC_MIN DOUBLE " +
+    "CONSTRAINT pk PRIMARY KEY (METRIC_NAME, APP_ID, INSTANCE_ID, TIMESTAMP)) " +
+    "IMMUTABLE_ROWS=true, TTL=2592000";
+
+  public static final String CREATE_METRICS_AGGREGATE_HOURLY_TABLE_SQL =
+    "CREATE TABLE IF NOT EXISTS METRIC_AGGREGATE_HOURLY " +
+    "(METRIC_NAME VARCHAR, APP_ID VARCHAR, INSTANCE_ID VARCHAR, " +
+    "TIMESTAMP UNSIGNED_LONG NOT NULL, METRIC_AVG DOUBLE, " +
+    "METRIC_MAX DOUBLE, METRIC_MIN DOUBLE, METRIC_VALUES VARCHAR " +
+    "CONSTRAINT pk PRIMARY KEY (METRIC_NAME, APP_ID, INSTANCE_ID, TIMESTAMP)) " +
+    "IMMUTABLE_ROWS=true, TTL=31536000";
 
   /**
    * Insert into metric records table.
    */
   public static final String UPSERT_METRICS_SQL = "UPSERT INTO METRIC_RECORD" +
     "(METRIC_NAME, HOSTNAME, APP_ID, INSTANCE_ID, TIMESTAMP, START_TIME, " +
-    "METRICS) VALUES(?, ?, ?, ?, ?, ?, ?)";
+    "METRICS) VALUES (?, ?, ?, ?, ?, ?, ?)";
+
+  public static final String UPSERT_AGGREGATE_SQL = "UPSERT INTO " +
+    "METRIC_AGGREGATE (METRIC_NAME, APP_ID, INSTANCE_ID, TIMESTAMP, " +
+    "METRIC_SUM, HOSTS_COUNT, METRIC_MAX, METRIC_MIN) " +
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+
+  public static final String UPSERT_HOURLY_RECORD_SQL = "UPSERT INTO " +
+    "METRIC_RECORD_HOURLY (METRIC_NAME, HOSTNAME, APP_ID, INSTANCE_ID, " +
+    "TIMESTAMP, METRIC_AVG, METRIC_MAX, METRIC_MIN, METRIC_AGGREGATES " +
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
   /**
    * Retrieve a set of rows from metrics records table.
    */
   public static final String GET_METRIC_SQL = "SELECT METRIC_NAME, " +
-    "HOSTNAME, APP_ID, INSTANCE_ID, START_TIME, METRICS FROM METRIC_RECORD";
+    "HOSTNAME, APP_ID, INSTANCE_ID, TIMESTAMP, START_TIME, " +
+    "METRICS FROM METRIC_RECORD";
+
+  public static final String GET_AGGREGATE_SQL = "SELECT METRIC_NAME, APP_ID," +
+    " INSTANCE_ID, TIMESTAMP, METRIC_SUM, HOSTS_COUNT, METRIC_MAX, " +
+    "METRIC_MIN FROM METRIC_AGGREGATE";
 
   /**
    * 4 metrics/min * 50 * 24: Retrieve data for 1 day.
@@ -67,14 +106,19 @@ public class PhoenixTransactSQL {
   public static PreparedStatement prepareGetMetricsSqlStmt(
       Connection connection, Condition condition) throws SQLException {
 
+    if (condition.isEmpty()) {
+      throw new IllegalArgumentException("Condition is empty.");
+    }
+
     StringBuilder sb = new StringBuilder(GET_METRIC_SQL);
-    if (!condition.isEmpty()) {
-      sb.append(" WHERE ");
-      sb.append(condition.getConditionClause());
-      sb.append(" ORDER BY METRIC_NAME, START_TIME");
+    sb.append(" WHERE ");
+    sb.append(condition.getConditionClause());
+    sb.append(" ORDER BY METRIC_NAME, TIMESTAMP");
+    if (condition.getLimit() != null) {
       sb.append(" LIMIT ").append(condition.getLimit());
     }
-    LOG.info("SQL: " + sb.toString());
+
+    LOG.debug("SQL: " + sb.toString() + ", condition: " + condition);
     PreparedStatement stmt = connection.prepareStatement(sb.toString());
     int pos = 1;
     if (condition.getMetricNames() != null) {
@@ -84,6 +128,49 @@ public class PhoenixTransactSQL {
     }
     if (condition.getHostname() != null) {
       stmt.setString(pos++, condition.getHostname());
+    }
+    // TODO: Upper case all strings on POST
+    if (condition.getAppId() != null) {
+      stmt.setString(pos++, condition.getAppId().toLowerCase());
+    }
+    if (condition.getInstanceId() != null) {
+      stmt.setString(pos++, condition.getInstanceId());
+    }
+    if (condition.getStartTime() != null) {
+      stmt.setLong(pos++, condition.getStartTime());
+    }
+    if (condition.getEndTime() != null) {
+      stmt.setLong(pos, condition.getEndTime());
+    }
+    if (condition.getFetchSize() != null) {
+      stmt.setFetchSize(condition.getFetchSize());
+    }
+
+    return stmt;
+  }
+
+  public static PreparedStatement prepareGetAggregateSqlStmt(
+      Connection connection, Condition condition) throws SQLException {
+
+    if (condition.isEmpty()) {
+      throw new IllegalArgumentException("Condition is empty.");
+    }
+
+    StringBuilder sb = new StringBuilder(GET_AGGREGATE_SQL);
+    sb.append(" WHERE ");
+    sb.append(condition.getConditionClause());
+    sb.append(" ORDER BY METRIC_NAME, TIMESTAMP");
+    if (condition.getLimit() != null) {
+      sb.append(" LIMIT ").append(condition.getLimit());
+    }
+
+    LOG.debug("SQL => " + sb.toString() + ", condition => " + condition);
+    PreparedStatement stmt = connection.prepareStatement(sb.toString());
+    int pos = 1;
+    if (condition.getMetricNames() != null) {
+      for ( ; pos <= condition.getMetricNames().size(); pos++) {
+        stmt.setString(pos, condition.getMetricNames().get(pos - 1));
+      }
     }
     // TODO: Upper case all strings on POST
     if (condition.getAppId() != null) {
@@ -111,6 +198,8 @@ public class PhoenixTransactSQL {
     Long endTime;
     Integer limit;
     boolean grouped;
+    boolean noLimit = false;
+    Integer fetchSize;
 
     Condition(List<String> metricNames, String hostname, String appId,
               String instanceId, Long startTime, Long endTime, Integer limit,
@@ -134,7 +223,7 @@ public class PhoenixTransactSQL {
       if (metricNames != null) {
         for (String name : metricNames) {
           if (sb.length() != 1) {
-            sb.append(",");
+            sb.append(", ");
           }
           sb.append("?");
         }
@@ -155,35 +244,39 @@ public class PhoenixTransactSQL {
         appendConjunction = true;
       }
       if (appendConjunction) {
-        sb.append("AND");
+        sb.append(" AND");
       }
+      appendConjunction = false;
       if (getHostname() != null) {
         sb.append(" HOSTNAME = ?");
         appendConjunction = true;
       }
       if (appendConjunction) {
-        sb.append("AND");
+        sb.append(" AND");
       }
+      appendConjunction = false;
       if (getAppId() != null) {
         sb.append(" APP_ID = ?");
         appendConjunction = true;
       }
       if (appendConjunction) {
-        sb.append("AND");
+        sb.append(" AND");
       }
+      appendConjunction = false;
       if (getInstanceId() != null) {
         sb.append(" INSTANCE_ID = ?");
         appendConjunction = true;
       }
       if (appendConjunction) {
-        sb.append("AND");
+        sb.append(" AND");
       }
+      appendConjunction = false;
       if (getStartTime() != null) {
         sb.append(" TIMESTAMP >= ?");
         appendConjunction = true;
       }
       if (appendConjunction) {
-        sb.append("AND");
+        sb.append(" AND");
       }
       if (getEndTime() != null) {
         sb.append(" TIMESTAMP < ?");
@@ -222,7 +315,14 @@ public class PhoenixTransactSQL {
       }
     }
 
+    void setNoLimit() {
+      this.noLimit = true;
+    }
+
     Integer getLimit() {
+      if (noLimit) {
+        return null;
+      }
       return limit == null ? DEFAULT_RESULT_LIMIT : limit;
     }
 
@@ -239,25 +339,27 @@ public class PhoenixTransactSQL {
         && endTime == null;
     }
 
+    Integer getFetchSize() {
+      return fetchSize;
+    }
+
+    void setFetchSize(Integer fetchSize) {
+      this.fetchSize = fetchSize;
+    }
+
     @Override
     public String toString() {
-      StringBuilder sb = new StringBuilder();
-      sb.append("Condition:{metrics:");
-      sb.append(metricNames.toString());
-      sb.append(", hostname=");
-      sb.append(hostname);
-      sb.append(", appID=");
-      sb.append(appId);
-      sb.append(", instanceId=");
-      sb.append(instanceId);
-      sb.append(", startTime=");
-      sb.append(startTime);
-      sb.append(", endTime=");
-      sb.append(endTime);
-      sb.append(", limit=");
-      sb.append(limit);
-      sb.append("}");
-      return sb.toString();
+      return "Condition{" +
+        "metricNames=" + metricNames +
+        ", hostname='" + hostname + '\'' +
+        ", appId='" + appId + '\'' +
+        ", instanceId='" + instanceId + '\'' +
+        ", startTime=" + startTime +
+        ", endTime=" + endTime +
+        ", limit=" + limit +
+        ", grouped=" + grouped +
+        ", noLimit=" + noLimit +
+        '}';
     }
   }
 }

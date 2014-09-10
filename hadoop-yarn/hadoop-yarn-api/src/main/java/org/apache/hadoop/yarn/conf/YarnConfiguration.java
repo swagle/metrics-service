@@ -1155,8 +1155,8 @@ public class YarnConfiguration extends Configuration {
   public static final String TIMELINE_METRICS_SERVICE_PREFIX =
     TIMELINE_SERVICE_PREFIX + "metrics.";
 
-  public static final String TIMELINE_METRICS_AGGREGATOR_CHECKPOINT =
-    TIMELINE_METRICS_SERVICE_PREFIX + "aggregator.checkpoint";
+  public static final String TIMELINE_METRICS_AGGREGATOR_CHECKPOINT_DIR =
+    TIMELINE_METRICS_SERVICE_PREFIX + "aggregator.checkpoint.dir";
 
   public static final String TIMELINE_SERVICE_LEVELDB_PREFIX =
       TIMELINE_SERVICE_PREFIX + "leveldb-timeline-store.";

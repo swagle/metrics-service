@@ -18,11 +18,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 '''
 
-import resource_monitoring.core
 from core.controller import Controller, Configuration
 import logging
 import signal
-import sys
+import threading
 
 logger = logging.getLogger()
 
@@ -33,12 +32,13 @@ def main(argv=None):
   config = Configuration()
   collector = Controller(config)
 
+  global logger
   logger.setLevel(config.get_log_level())
   formatter = logging.Formatter("%(asctime)s %(filename)s:%(lineno)d - %(message)s")
-  stream_handler = logging.StreamHandler()
-  stream_handler.setFormatter(formatter)
-  logger.addHandler(stream_handler)
-  logger.info('Starting Server RPC Thread: %s' % ' '.join(sys.argv))
+  handler = logging.FileHandler('/tmp/resource_monitoring.log')
+  handler.setFormatter(formatter)
+  logger.addHandler(handler)
+  logger.info('Starting Server, main Thread: %s' % threading.currentThread().getName())
 
   collector.start()
   collector.start_emitter()

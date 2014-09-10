@@ -48,22 +48,40 @@ public class TimelineMetrics {
     this.allMetrics = allMetrics;
   }
 
+  private boolean isEqualTimelineMetrics(TimelineMetric metric1,
+                                         TimelineMetric metric2) {
+
+    boolean isEqual = true;
+
+    if (!metric1.getMetricName().equals(metric2.getMetricName())) {
+      return false;
+    }
+
+    if (metric1.getHostName() != null) {
+      isEqual = metric1.getHostName().equals(metric2.getHostName());
+    }
+
+    if (metric1.getAppId() != null) {
+      isEqual = metric1.getAppId().equals(metric2.getAppId());
+    }
+
+    return isEqual;
+  }
+
   /**
-   * Merge with existing TimelineMetric if everyhting except startTime is
+   * Merge with existing TimelineMetric if everything except startTime is
    * the same.
    * @param metric {@link TimelineMetric}
    */
   public void addOrMergeTimelineMetric(TimelineMetric metric) {
     TimelineMetric metricToMerge = null;
 
-    for (TimelineMetric timelineMetric : allMetrics) {
-      if (timelineMetric.getMetricName().equals(metric.getMetricName()) &&
-          timelineMetric.getHostName().equals(metric.getHostName()) &&
-          timelineMetric.getAppId().equals(metric.getAppId()) &&
-          timelineMetric.getInstanceId().equals(metric.getInstanceId())) {
-
-        metricToMerge = timelineMetric;
-        break;
+    if (!allMetrics.isEmpty()) {
+      for (TimelineMetric timelineMetric : allMetrics) {
+        if (timelineMetric.equalsExceptTime(metric)) {
+          metricToMerge = timelineMetric;
+          break;
+        }
       }
     }
 
@@ -75,6 +93,8 @@ public class TimelineMetrics {
       if (metricToMerge.getStartTime() > metric.getStartTime()) {
         metricToMerge.setStartTime(metric.getStartTime());
       }
+    } else {
+      allMetrics.add(metric);
     }
   }
 }

@@ -25,7 +25,7 @@ from event_definition import HostMetricCollectEvent, ProcessMetricCollectEvent
 
 logger = logging.getLogger()
 
-DEFAULT_HOST_APP_ID = '_HOST'
+DEFAULT_HOST_APP_ID = 'HOST_'
 
 class MetricsCollector():
   """

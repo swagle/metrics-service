@@ -53,9 +53,10 @@ class Emitter(threading.Thread):
             logger.info("Nothing to emit, resume waiting.")
             break
           pass
+          logger.info("Sending metric data @ %s" % time.strftime("%H:%M:%S"))
           response = self.push_metrics(json_data)
 
-          if response and response.status == '201':
+          if response and response.getcode() == 200:
             retry_count = MAX_RETRY_COUNT
             self.application_metric_map.clear()
             self.application_metric_map.release_lock()
@@ -72,7 +73,7 @@ class Emitter(threading.Thread):
       except Exception, e:
         logger.warn('Unable to emit events. %s' % str(e))
         time.sleep(RETRY_SLEEP_INTERVAL)
-        logger.info('Retrying emit after %s seconds.' % RETRY_SLEEP_INTERVAL)
+        logger.info('Retrying emit after %s seconds.' % str(RETRY_SLEEP_INTERVAL))
     pass
 
   def push_metrics(self, data):
@@ -83,7 +84,7 @@ class Emitter(threading.Thread):
     response = urllib2.urlopen(req, timeout=int(self.send_interval - 10))
     if response:
       logger.debug("POST response from server: status = {0}, code = {1}".format(
-        response.status, response.reason))
+        response.getcode(), response.msg))
       logger.debug(response.read())
     pass
     return response

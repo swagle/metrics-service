@@ -128,6 +128,17 @@ public class TimelineMetric implements Comparable<TimelineMetric> {
     return true;
   }
 
+  public boolean equalsExceptTime(TimelineMetric metric) {
+    if (!metricName.equals(metric.metricName)) return false;
+    if (hostName != null ? !hostName.equals(metric.hostName) : metric.hostName != null)
+      return false;
+    if (!appId.equals(metric.appId)) return false;
+    if (instanceId != null ? !instanceId.equals(metric.instanceId) : metric.instanceId != null)
+      return false;
+
+    return true;
+  }
+
   @Override
   public int hashCode() {
     int result = metricName.hashCode();
